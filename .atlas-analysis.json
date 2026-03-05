@@ -71,7 +71,7 @@
     "KvandClient.sendCommand(command: String): String",
     "kvand daemon commands: get performance, set performance <mode>",
     "kvand daemon commands: get conservation, set conservation <0|1>",
-    "kvand daemon commands: get rapidcharge, set rapidcharge <0|1>",
+    "kvand daemon commands: get rapid, set rapid <0|1>",
     "ThemeType enum: SEA, MATERIAL, KANAGAWA, DRACULA",
     "Settings model with theme preferences and battery display options"
   ]
