@@ -1,80 +1,257 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get started with KVantage in minutes
 ---
 
-## Get started in three steps
+This guide will help you get KVantage up and running on your Lenovo laptop in just a few minutes.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, make sure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- A Lenovo laptop running Linux
+- Java Runtime Environment (JRE) installed
+- The acpi_call kernel module loaded
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Not sure if you meet the requirements? Check the [System Requirements](/system-requirements) page for detailed information.
 </Note>
+
+## Quick Start Steps
+
+<Steps>
+  <Step title="Download KVantage">
+    Download the latest version:
+    
+    ```bash
+    wget https://github.com/kosail/KVantage/releases/download/Release_v2.1.0/com.korealm.kvantage-linux-x64-2.1.0-release.jar
+    ```
+    
+    Or download manually from the [releases page](https://github.com/kosail/KVantage/releases).
+  </Step>
+
+  <Step title="Install Java (if needed)">
+    Check if Java is installed:
+    
+    ```bash
+    java -version
+    ```
+    
+    If not installed, use your package manager:
+    
+    <CodeGroup>
+    ```bash Ubuntu/Debian
+    sudo apt install default-jre
+    ```
+    
+    ```bash Fedora
+    sudo dnf install java-latest-openjdk
+    ```
+    
+    ```bash Arch Linux
+    sudo pacman -S jre-openjdk
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Launch KVantage">
+    Run the JAR file:
+    
+    ```bash
+    java -jar com.korealm.kvantage-linux-x64-2.1.0-release.jar
+    ```
+    
+    <Warning>
+      **Never** run KVantage with `sudo` or as root. The application must run as a regular user. Root access is handled automatically by the backend service.
+    </Warning>
+  </Step>
+
+  <Step title="Complete first-time setup">
+    On first launch, KVantage will display an installation dialog:
+    
+    - **Click "Okay"** to install KVantage to `~/.local/bin/` and create a desktop entry
+    - **Click "No"** to use KVantage as a portable application
+    - **Click "No, and don't ask me again"** to use portably and suppress future prompts
+    
+    The installer will:
+    - Copy the JAR to your local bin directory
+    - Create a desktop entry for easy launching
+    - Extract the application icon
+    - Allow launching from your application menu
+  </Step>
+
+  <Step title="Authenticate the backend service">
+    After installation, KVantage will start its backend service (kvand) which requires root access.
+    
+    You'll see your system's password prompt (polkit dialog, pkexec, or terminal sudo prompt).
+    
+    <Note>
+      This password prompt appears **once per session**. The backend needs root access to read/write ACPI values at `/proc/acpi/call`. The GUI itself never runs with elevated privileges.
+    </Note>
+    
+    Enter your password to continue.
+  </Step>
+</Steps>
+
+## Understanding the KVantage Interface
+
+Once KVantage launches successfully, you'll see the main window with several sections:
+
+### Performance Profile
+
+The top section displays your current performance profile with three options:
+
+- **Power Saving** - Optimizes for battery life
+- **Intelligent Cooling** - Balanced performance and thermals
+- **Performance** - Maximum performance mode
+
+Click any profile to switch immediately.
+
+### Battery Threshold (Conservation Mode)
+
+This feature limits your battery charge to 80% to improve battery lifespan:
+
+- Toggle the switch to **Enable** or disable battery conservation
+- Useful for laptops that stay plugged in most of the time
+
+<Warning>
+  The battery threshold is set to 80% and cannot be customized in most Lenovo laptop models. Custom thresholds are a premium feature available only on certain high-end models.
+</Warning>
+
+### Rapid Charge
+
+Enable or disable rapid charging for your battery:
+
+- **Enabled** - Charges faster (may generate more heat)
+- **Disabled** - Slower, gentler charging (better for battery health)
+
+### Battery Information
+
+If enabled in settings, you'll see:
+
+- Battery name/model
+- Remaining battery lifespan percentage
+- Current charge percentage icon
+
+### Settings Panel
+
+Click the settings button (gear icon) to access:
+
+- **Dark mode** toggle
+- **Animated background** toggle
+- **Show battery life** toggle
+- **Theme selection** (multiple color schemes available)
+- **Language** (auto-detected from system locale)
+
+## Your First Actions
+
+Here are some common tasks to get started:
+
+### Enable Battery Conservation Mode
+
+If your laptop is usually plugged in:
+
+1. Locate the **Battery Threshold** section
+2. Toggle the switch to **Enable**
+3. Your battery will now stop charging at 80%
+
+<Note>
+  This feature significantly extends battery lifespan for laptops that remain plugged in for extended periods.
+</Note>
+
+### Switch Performance Profile
+
+To change your laptop's performance mode:
+
+1. Find the **Performance Profile** section at the top
+2. Click your desired profile:
+   - **Power Saving** for extended battery life
+   - **Intelligent Cooling** for balanced performance
+   - **Performance** when you need maximum power
+3. The change applies immediately
+
+### Customize the Theme
+
+1. Click the **Settings** button (gear icon)
+2. Scroll to **Themes**
+3. Select from multiple color schemes:
+   - Whispering Sea (default)
+   - And several other Material UI-inspired themes
+4. Toggle **Dark mode** for your preference
+5. Enable **Animated Background** for visual flair
+
+## Understanding Root Access
+
+KVantage has a unique architecture for handling root permissions:
+
+- **GUI (Frontend)**: Runs as your regular user - **never** requires or uses root
+- **Backend (kvand)**: A small daemon that handles ACPI operations - requires root
+
+### How it works:
+
+1. When you launch KVantage, the GUI starts as your user
+2. The GUI extracts and launches the kvand backend service
+3. The backend requests root access **once** using your system's authentication
+4. All ACPI read/write operations are handled by the backend
+5. The GUI communicates with the backend over a local pipe
+
+### Security benefits:
+
+- The GUI never runs with elevated privileges
+- Your window manager and compositor remain secure
+- Only the minimal backend service requires root
+- Root access is requested through standard system dialogs (polkit/pkexec)
+
+<Warning>
+  If you try to run KVantage with `sudo`, it will immediately exit with an error message. This is a safety feature to prevent running the GUI with unnecessary privileges.
+</Warning>
+
+## Next Steps
+
+- Learn about [System Requirements](/system-requirements) in detail
+- Check the [Installation](/installation) page for advanced configuration
+- Report issues or contribute on [GitHub](https://github.com/kosail/KVantage)
+
+## Troubleshooting Quick Issues
+
+### "Backend service failed to start"
+
+The acpi_call module may not be loaded:
+
+```bash
+sudo modprobe acpi_call
+```
+
+Verify it's loaded:
+
+```bash
+lsmod | grep acpi_call
+ls -l /proc/acpi/call
+```
+
+### "App must never be started as root"
+
+You ran KVantage with sudo. Run it as your regular user:
+
+```bash
+# Remove sudo
+java -jar com.korealm.kvantage-linux-x64-2.1.0-release.jar
+```
+
+### Password prompt doesn't appear
+
+Ensure you have a polkit authentication agent installed:
+
+<CodeGroup>
+```bash GNOME
+sudo apt install gnome-polkit
+```
+
+```bash KDE
+sudo apt install polkit-kde-agent-1
+```
+
+```bash MATE
+sudo apt install mate-polkit
+```
+</CodeGroup>

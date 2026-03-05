@@ -1,0 +1,242 @@
+---
+title: Architecture Overview
+description: Understanding KVantage's two-component architecture and security model
+---
+
+## Two-Component Architecture
+
+KVantage employs a **two-process architecture** that separates GUI functionality from privileged system operations:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    KVantage Application                     │
+├─────────────────────────────┬───────────────────────────────┤
+│   Frontend (User Process)   │   Backend (Root Process)      │
+│                             │                               │
+│  • Compose Desktop GUI      │  • kvand daemon (Go)          │
+│  • Kotlin/JVM               │  • Runs with sudo/pkexec      │
+│  • Runs as normal user      │  • ACPI interface access      │
+│  • State management         │  • /proc/acpi/call I/O        │
+│  • UI rendering             │                               │
+└──────────────┬──────────────┴─────────────┬─────────────────┘
+               │    stdin/stdout protocol   │
+               │    "get performance" →     │
+               │    ← "0x1"                 │
+               └────────────────────────────┘
+                         ↓
+                /proc/acpi/call
+                  (ACPI interface)
+```
+
+### Frontend: Compose Desktop GUI
+
+- **Technology**: Kotlin + Compose Multiplatform for Desktop (JVM)
+- **Privilege level**: Runs as normal user (never root)
+- **Responsibilities**:
+  - User interface rendering and interaction
+  - Application state management
+  - Launching and communicating with backend daemon
+  - Settings persistence and theme management
+
+### Backend: kvand Daemon
+
+- **Technology**: Go
+- **Privilege level**: Requires root access for ACPI operations
+- **Responsibilities**:
+  - Reading from and writing to `/proc/acpi/call`
+  - Executing ACPI commands for Lenovo-specific hardware control
+  - Responding to frontend commands via simple text protocol
+
+## Communication Protocol
+
+The frontend and backend communicate through **stdin/stdout** using a line-based text protocol:
+
+### Command Format
+
+**Get Operations** (read hardware state):
+```
+get [option]
+```
+
+Examples:
+```
+get performance  → 0x1 (returns current performance mode)
+get conservation → 0x0 (returns battery conservation status)
+get rapid       → 0x1 (returns rapid charge status)
+```
+
+**Set Operations** (write hardware state):
+```
+set [option] [value]
+```
+
+Examples:
+```
+set performance 0  → OK (Intelligent Cooling)
+set conservation 1 → OK (enable 80% charge limit)
+set rapid 0        → OK (disable rapid charge)
+```
+
+### Handshake Protocol
+
+When the frontend launches the backend daemon, it waits for a `READY` message before proceeding:
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/state/KvandClient.kt
+// From KvandClient.kt:42-45
+while (true) {
+    val line = reader.readLine() ?: handleBackendDeath()
+    if (line.trim() == "READY") break
+}
+```
+
+The backend sends this sentinel message after successfully escalating privileges:
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+// From main.go:94-95
+fmt.Println("READY")
+os.Stdout.Sync() // Flush the buffer
+```
+
+## Root Privilege Management
+
+### Why Root Access is Required
+
+The `/proc/acpi/call` interface requires root privileges for both read and write operations. This is a kernel-level interface that provides direct access to ACPI (Advanced Configuration and Power Interface) methods.
+
+### Security Model
+
+KVantage implements a **privilege separation** model to minimize security risks:
+
+1. **GUI never runs as root** - The application explicitly checks and prevents execution as root:
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/Main.kt
+fun main() = application {
+    // From Main.kt:21-24
+    if (isRunningAsRoot()) forbidStartAsRoot(::exitApplication)
+    // ...
+}
+
+fun isRunningAsRoot(): Boolean {
+    return System.getProperty("user.name") == "root" ||
+            System.getenv("USER") == "root" ||
+            System.getenv("SUDO_UID") != null
+}
+```
+
+2. **Backend escalates only when needed** - The kvand daemon uses `pkexec` to request root privileges:
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+// From main.go:82-89
+if os.Getegid() != 0 {
+    fmt.Printf("> Not running as root. Trying to escalate using pkexec...\n")
+    err := escalateWithPkexec()
+    if err != nil {
+        fmt.Printf("Failed to escalate privileges: %v\n", err)
+        os.Exit(1)
+    }
+}
+```
+
+3. **Single password prompt** - The user is prompted for their password **once** per session when the backend starts, not for every operation.
+
+4. **Isolated attack surface** - Only the small Go daemon runs with elevated privileges, while the entire GUI application runs as a normal user.
+
+## ACPI Interface Access
+
+### The `/proc/acpi/call` Interface
+
+KVantage interacts with Lenovo laptop hardware through the `acpi_call` kernel module, which exposes the `/proc/acpi/call` pseudo-file.
+
+**Write operation** (send ACPI command):
+```go
+file, _ := os.OpenFile("/proc/acpi/call", os.O_WRONLY, 0)
+file.WriteString("\\_SB.PCI0.LPC0.EC0.SPMO") // Get performance mode
+```
+
+**Read operation** (get ACPI response):
+```go
+file, _ := os.OpenFile("/proc/acpi/call", os.O_RDONLY, 0)
+scanner := bufio.NewScanner(file)
+scanner.Scan()
+result := scanner.Text() // e.g., "0x1\x00"
+```
+
+### ACPI Command Constants
+
+The backend defines Lenovo-specific ACPI paths:
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+// Status queries
+GetBattConservationStatus   = "\\_SB.PCI0.LPC0.EC0.BTSM"
+GetRapidChargeStatus       = "\\_SB.PCI0.LPC0.EC0.QCHO"
+GetPerformanceModeStatus   = "\\_SB.PCI0.LPC0.EC0.SPMO"
+
+// Battery conservation control
+SetBattConservationOn  = "\\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x03"
+SetBattConservationOff = "\\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x05"
+
+// Performance mode control
+SetPerformanceModeIntelligentCooling = "\\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x000FB001"
+SetPerformanceModeExtremePerformance = "\\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x0012B001"
+SetPerformanceModePowerSaving        = "\\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x0013B001"
+```
+
+## Embedded Backend Binary
+
+Due to JVM limitations (executables cannot be run directly from JAR files), KVantage uses a **temporary file extraction** strategy:
+
+1. The compiled `kvand` binary is embedded in the JAR at `/backend/kvand`
+2. On startup, the frontend extracts it to a temporary file
+3. Sets executable permissions (`chmod +x`)
+4. Launches the process
+5. The temp file is deleted on application exit
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/state/KvandClient.kt
+val embeddedBackend = this::class.java.getResourceAsStream("/backend/kvand")
+val tempFile = File.createTempFile("kvantage_service", null)
+tempFile.deleteOnExit()
+
+embeddedBackend.use { input ->
+    FileOutputStream(tempFile).use { output ->
+        input.copyTo(output)
+    }
+}
+
+tempFile.setExecutable(true)
+val process = ProcessBuilder(tempFile.absolutePath).start()
+```
+
+## Design Rationale
+
+### Why Not Run Everything as Root?
+
+Running GUI applications as root is a **significant security risk**:
+- Compromised UI code could damage the entire system
+- User input handling vulnerabilities become critical
+- Accidental file operations have no safety net
+
+### Why Not Use a System Service?
+
+While a systemd service would be more traditional, KVantage prioritizes:
+- **Ease of installation** - No system configuration required
+- **Portability** - Works across different init systems
+- **User control** - No persistent background process
+- **Simplicity** - Single JAR file deployment
+
+### Why Go for the Backend?
+
+From the README:
+
+> Due to some limitations of the JVM and Kotlin Native, I decided to reimplement batmanager in Golang.
+
+Go provides:
+- Easy cross-compilation to native binaries
+- Small executable size (embeddable in JAR)
+- Simple file I/O without JNI complexity
+- Straightforward privilege escalation handling
+
+## External References
+
+- **Backend source code**: [github.com/kosail/Kvand](https://github.com/kosail/Kvand)
+- **Inspired by**: [batmanager by LevitatingBusinessMan](https://github.com/LevitatingBusinessMan/batmanager) (Rust CLI tool)
+- **ACPI call module**: Required kernel module for `/proc/acpi/call` support

@@ -1,0 +1,293 @@
+---
+title: Themes
+description: Customize KVantage's appearance with four beautiful theme options and animated backgrounds
+---
+
+## Overview
+
+KVantage offers four carefully designed themes to personalize your experience. Each theme includes both light and dark variants, and you can enhance any theme with an optional animated background effect.
+
+<Info>
+All themes are designed to be visually pleasing while maintaining excellent readability and accessibility. Each theme has its own color palette that affects buttons, backgrounds, accent colors, and UI elements throughout the application.
+</Info>
+
+## Available Themes
+
+<CardGroup cols={2}>
+  <Card title="Whispering Sea" icon="water">
+    The default theme with calm, oceanic blue and teal tones
+  </Card>
+  <Card title="Material You" icon="palette">
+    Modern Material Design 3 colors with vibrant gradients
+  </Card>
+  <Card title="Kanagawa" icon="mountain">
+    Inspired by the famous Japanese woodblock print, featuring warm and earthy tones
+  </Card>
+  <Card title="Dracula" icon="moon">
+    Popular dark theme with purple, pink, and cyan accents
+  </Card>
+</CardGroup>
+
+## Theme Details
+
+### Whispering Sea (SEA)
+
+**Index**: 0 (default theme)
+
+A serene theme inspired by ocean waters, featuring:
+- Primary colors: Deep blues and teals
+- Accent colors: Aqua and turquoise highlights
+- Best for: Users who prefer calm, professional aesthetics
+- Implemented in: `WhisperingSea.kt`
+
+This is the default theme when you first install KVantage.
+
+### Material You (MATERIAL)
+
+**Index**: 1
+
+Based on Google's Material Design 3 specifications:
+- Primary colors: Vibrant, adaptive palette
+- Accent colors: Bold, high-contrast elements
+- Best for: Users who want a modern, colorful interface
+- Implemented in: `MaterialTheme.kt`
+
+Material You provides dynamic, bold colors that follow Material Design guidelines.
+
+### Kanagawa (KANAGAWA)
+
+**Index**: 2
+
+Inspired by Hokusai's "The Great Wave off Kanagawa":
+- Primary colors: Warm beiges, deep blues
+- Accent colors: Earthy tones and subtle reds
+- Best for: Users who appreciate Japanese aesthetics and warm color schemes
+- Implemented in: `KanagawaTheme.kt`
+
+<Tip>
+Kanagawa offers a unique blend of traditional Japanese color sensibilities with modern UI design.
+</Tip>
+
+### Dracula (DRACULA)
+
+**Index**: 3
+
+The popular Dracula color scheme, beloved by developers:
+- Primary colors: Dark purples and grays
+- Accent colors: Pink, cyan, and purple highlights
+- Best for: Users who prefer high-contrast dark themes
+- Implemented in: `DraculaTheme.kt`
+
+<Note>
+Dracula is particularly popular among developers and pairs excellently with dark mode for reduced eye strain during night-time use.
+</Note>
+
+## Light vs. Dark Mode
+
+Every theme includes both light and dark variants:
+
+- **Dark Mode**: Reduces eye strain in low-light environments, saves power on OLED screens
+- **Light Mode**: Better visibility in bright environments, traditional interface appearance
+
+The theme system automatically selects the appropriate color palette based on your dark mode setting:
+
+```kotlin
+val colorScheme = when (themeType) {
+    ThemeType.SEA -> if (darkTheme) whisperingSeaDarkColors() else whisperingSeaLightColors()
+    ThemeType.MATERIAL -> if (darkTheme) materialYouDarkColors() else materialYouLightColors()
+    ThemeType.DRACULA -> if (darkTheme) draculaDarkColors() else draculaLightColors()
+    ThemeType.KANAGAWA -> if (darkTheme) kanagawaDarkColors() else kanagawaLightColors()
+}
+```
+
+## Animated Background
+
+KVantage includes an optional animated background feature that works with any theme:
+
+- **What it does**: Creates subtle, flowing color gradients that animate across the background
+- **Performance**: Smooth 60 FPS animation with minimal CPU usage
+- **Colors**: Uses your selected theme's color palette (primary, secondary, tertiary containers)
+- **Duration**: 11-second animation cycle with smooth easing
+
+<Warning>
+Animated backgrounds may reduce battery life slightly on laptops. Consider disabling this feature when running on battery power if you want maximum battery efficiency.
+</Warning>
+
+### How It Works
+
+The animation creates two radial gradients that move in opposite phases:
+
+1. First gradient moves horizontally (left to right and back)
+2. Second gradient moves vertically (top to bottom and back)
+3. Both gradients use colors from your active theme
+4. The animation reverses smoothly using `FastOutSlowInEasing`
+5. Overlapping gradients create dynamic, organic color blending
+
+## How to Change Themes
+
+<Steps>
+  <Step title="Open Settings">
+    Click the Settings button (gear icon) in KVantage
+  </Step>
+  
+  <Step title="Locate the Themes section">
+    Scroll down to find the "Themes" segmented button row
+  </Step>
+  
+  <Step title="Select your theme">
+    Click one of the four theme buttons:
+    - **Sea** (Whispering Sea)
+    - **Material** (Material You)
+    - **Kanagawa**
+    - **Dracula**
+  </Step>
+  
+  <Step title="Theme applies instantly">
+    The entire interface updates immediately with your new theme colors
+  </Step>
+</Steps>
+
+<Tip>
+Your theme preference is automatically saved and will be restored the next time you launch KVantage.
+</Tip>
+
+## How to Toggle Dark Mode
+
+<Steps>
+  <Step title="Open Settings">
+    Click the Settings button in KVantage
+  </Step>
+  
+  <Step title="Find Dark Mode toggle">
+    Located near the top of the settings dialog
+  </Step>
+  
+  <Step title="Toggle the switch">
+    Click the "Dark mode" switch to enable or disable
+  </Step>
+  
+  <Step title="Mode changes instantly">
+    Your current theme switches between its light and dark variant
+  </Step>
+</Steps>
+
+## How to Enable Animated Background
+
+<Steps>
+  <Step title="Open Settings">
+    Click the Settings button in KVantage
+  </Step>
+  
+  <Step title="Find Animated Background toggle">
+    Located below the Dark Mode toggle
+  </Step>
+  
+  <Step title="Toggle the switch">
+    Click the "Animated Background" switch with secondary color
+  </Step>
+  
+  <Step title="Animation starts immediately">
+    The background begins flowing with your theme's colors
+  </Step>
+</Steps>
+
+<Note>
+The Animated Background toggle uses a distinctive secondary color (orange/amber) to indicate it's an optional visual enhancement feature.
+</Note>
+
+## Technical Implementation
+
+### Theme Enum
+
+Themes are defined in `ThemeType.kt`:
+
+```kotlin
+enum class ThemeType (val index: Int) {
+    SEA (0),
+    MATERIAL (1),
+    KANAGAWA (2),
+    DRACULA (3);
+}
+```
+
+### Theme Selector UI
+
+Implemented as a segmented button row in the Settings dialog:
+- Four equal-width buttons
+- Selected theme highlighted with primary color (40% opacity)
+- Theme names displayed in title case
+- Selection persisted to app settings
+
+### File Structure
+
+```
+ui/theme/
+├── AppTheme.kt              # Main theme switcher
+├── WhisperingSea.kt         # SEA theme colors
+├── MaterialTheme.kt         # MATERIAL theme colors
+├── KanagawaTheme.kt         # KANAGAWA theme colors
+├── DraculaTheme.kt          # DRACULA theme colors
+└── AnimatedColorfulBackground.kt  # Background animation
+```
+
+## Settings Persistence
+
+All theme-related settings are automatically saved:
+
+- **Selected theme** (SEA, MATERIAL, KANAGAWA, DRACULA)
+- **Dark mode** preference (on/off)
+- **Animated background** preference (on/off)
+
+These settings persist across application restarts and are stored in KVantage's configuration.
+
+## Accessibility Considerations
+
+All themes are designed with accessibility in mind:
+
+- Sufficient contrast ratios between text and backgrounds
+- Clear visual distinction between interactive and static elements
+- Color combinations tested for common color vision deficiencies
+- Dark mode variants reduce eye strain in low-light conditions
+
+<Info>
+If you have specific accessibility needs, try different themes to find the one that works best for you. Dracula and Whispering Sea tend to have the highest contrast ratios.
+</Info>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Theme doesn't change when I select it">
+    This is unusual. Try closing and reopening KVantage. If the issue persists, check file permissions on your KVantage configuration directory.
+  </Accordion>
+  
+  <Accordion title="Animated background causes performance issues">
+    Disable the animated background toggle. On some older hardware or when running on battery, the animation may impact performance. Standard backgrounds have no performance cost.
+  </Accordion>
+  
+  <Accordion title="Colors look different than expected">
+    Make sure you have the dark mode toggle set correctly. Each theme looks quite different in light vs. dark mode. Also check your display's color calibration settings.
+  </Accordion>
+  
+  <Accordion title="Theme resets to default after restart">
+    Your settings file may not be saving correctly. Check write permissions on `~/.config/kvantage/` or wherever KVantage stores its configuration.
+  </Accordion>
+</AccordionGroup>
+
+## Contributing Custom Themes
+
+KVantage is open source! If you'd like to contribute a new theme:
+
+1. Create a new Kotlin file in `ui/theme/` with your theme's color definitions
+2. Define both light and dark color schemes
+3. Add your theme to the `ThemeType` enum
+4. Update the theme switcher in `AppTheme.kt`
+5. Submit a pull request to the KVantage repository
+
+<Tip>
+Follow Material Design 3 color system guidelines for the best results. Use existing themes as templates for structure and organization.
+</Tip>
+
+## Related Settings
+
+- [Localization](/features/localization) - Change the interface language
+- Settings dialog: Toggle dark mode, animated backgrounds, and battery display options

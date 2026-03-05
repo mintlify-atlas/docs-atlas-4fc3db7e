@@ -1,0 +1,343 @@
+---
+title: System Requirements
+description: Hardware and software requirements for running KVantage
+---
+
+KVantage is designed specifically for Lenovo laptops running Linux. This page details all requirements and limitations you should be aware of before installation.
+
+## Hardware Requirements
+
+### Lenovo Laptop (Required)
+
+<Warning>
+  **KVantage only works on Lenovo laptops.** The application relies on Lenovo-specific ACPI interfaces that are not present on other manufacturers' hardware.
+</Warning>
+
+KVantage requires:
+
+- **Lenovo-branded laptop** with ACPI interface support
+- ACPI table that exposes battery and performance controls via the acpi_call interface
+- Access to `/proc/acpi/call` for reading and writing ACPI values
+
+<Note>
+  Most modern Lenovo laptops (ThinkPad, IdeaPad, Legion series) are compatible. Very old models or those with non-standard ACPI implementations may not work.
+</Note>
+
+### Why Lenovo Only?
+
+The application sends Lenovo-specific ACPI commands to control:
+
+- Performance profiles (Power Saving, Intelligent Cooling, Performance)
+- Battery charge thresholds (conservation mode)
+- Rapid charge settings
+
+These commands are specific to Lenovo's ACPI implementation. **Running KVantage on non-Lenovo hardware may cause undefined behavior or system instability.**
+
+<Warning>
+  **Do NOT run KVantage on non-Lenovo laptops.** The backend assumes a known/defined ACPI table structure. Using it on other hardware could send incorrect ACPI commands.
+</Warning>
+
+## Software Requirements
+
+### Operating System
+
+KVantage is designed for **Linux** operating systems. It has been tested on:
+
+- Ubuntu and Debian-based distributions
+- Fedora and Red Hat-based distributions
+- Arch Linux and derivatives
+- openSUSE
+- NixOS
+- Other major Linux distributions
+
+**Not supported:**
+- Windows
+- macOS
+- BSD systems
+
+### Java Runtime Environment
+
+<Note>
+  KVantage is built with Kotlin and Compose Multiplatform for Desktop, which requires a Java Runtime Environment.
+</Note>
+
+Requirements:
+
+- **Java 11 or later** (recommended: Java 17 or newer)
+- OpenJDK or Oracle JRE
+
+Verify your Java version:
+
+```bash
+java -version
+```
+
+Expected output:
+
+```
+openjdk version "17.0.x" 2023-xx-xx
+OpenJDK Runtime Environment (build ...)
+OpenJDK 64-Bit Server VM (build ...)
+```
+
+### acpi_call Kernel Module
+
+<Warning>
+  The **acpi_call kernel module** is **required** for KVantage to function. Without it, the backend service will fail to start.
+</Warning>
+
+#### What is acpi_call?
+
+The `acpi_call` module provides a userspace interface to make arbitrary ACPI calls via `/proc/acpi/call`. KVantage uses this to:
+
+- Read current performance profile
+- Set performance profiles
+- Enable/disable battery conservation mode
+- Control rapid charging
+
+#### Installing acpi_call
+
+Install the module using your distribution's package manager:
+
+<CodeGroup>
+```bash Ubuntu/Debian
+sudo apt update
+sudo apt install acpi-call-dkms
+```
+
+```bash Fedora
+sudo dnf install akmod-acpi_call
+```
+
+```bash Arch Linux
+sudo pacman -S acpi_call
+```
+
+```bash openSUSE
+sudo zypper install acpi_call-kmp-default
+```
+</CodeGroup>
+
+#### Loading the module
+
+Load the module manually:
+
+```bash
+sudo modprobe acpi_call
+```
+
+Verify it's loaded:
+
+```bash
+lsmod | grep acpi_call
+```
+
+Expected output:
+
+```
+acpi_call              16384  0
+```
+
+#### Auto-load on boot
+
+To load acpi_call automatically at boot, add it to your modules configuration:
+
+```bash
+echo "acpi_call" | sudo tee /etc/modules-load.d/acpi_call.conf
+```
+
+#### Verify /proc/acpi/call exists
+
+Check that the ACPI interface is available:
+
+```bash
+ls -l /proc/acpi/call
+```
+
+Expected output:
+
+```
+-rw-r--r-- 1 root root 0 Jan 1 12:00 /proc/acpi/call
+```
+
+If this file doesn't exist, the acpi_call module is not loaded correctly.
+
+## Permission Requirements
+
+### Root Access for Backend Service
+
+<Note>
+  KVantage requires root access to interact with `/proc/acpi/call`. This is a fundamental limitation that cannot be bypassed.
+</Note>
+
+#### How root access works:
+
+1. The **GUI frontend** runs as your regular user (no elevated privileges)
+2. The **backend daemon (kvand)** requires root to access `/proc/acpi/call`
+3. You are prompted **once per session** to authenticate
+4. The backend runs with root privileges only for ACPI operations
+
+#### Why root is needed:
+
+The `/proc/acpi/call` interface requires root permissions to:
+
+- Read ACPI values (current settings)
+- Write ACPI values (change settings)
+
+This is a kernel-level interface that cannot be accessed by regular users for security reasons.
+
+#### Security considerations:
+
+- The GUI **never** runs as root (enforced by safety checks)
+- Only the minimal backend service uses elevated privileges
+- Root access is isolated to ACPI operations only
+- Authentication uses system-standard methods (polkit, pkexec, sudo)
+
+<Warning>
+  **Never run the KVantage GUI with sudo.** The application will detect this and immediately exit with an error. This is a safety feature to prevent running the entire GUI with unnecessary privileges.
+</Warning>
+
+#### Authentication methods:
+
+KVantage uses your system's standard authentication mechanism:
+
+- **Polkit** (recommended) - GUI dialog prompt
+- **pkexec** - Alternative GUI prompt
+- **sudo** - Terminal password prompt
+
+The method depends on your desktop environment and system configuration.
+
+## Desktop Environment
+
+KVantage is desktop-environment agnostic and works on:
+
+- GNOME
+- KDE Plasma
+- XFCE
+- Cinnamon
+- MATE
+- LXQt
+- Hyprland (Wayland)
+- i3, bspwm, and other window managers
+
+**Display server compatibility:**
+- X11 - Fully supported
+- Wayland - Fully supported
+
+<Note>
+  For Wayland compositors, ensure you have a polkit authentication agent running for the password prompt to appear.
+</Note>
+
+## Known Limitations
+
+### 1. Lenovo Laptops Only
+
+**System compatibility is limited to Lenovo laptops** that expose the ACPI interface using the acpi_call kernel module (`/proc/acpi/call`).
+
+- Other manufacturers use different ACPI implementations
+- Running on non-Lenovo hardware may cause undefined behavior
+- No support planned for other brands
+
+### 2. Root Access Requirement
+
+The app needs root access to perform ACPI read and writes at `/proc/acpi/call`.
+
+- This limitation cannot be bypassed
+- It has been minimized by:
+  - Asking for password once per session
+  - Isolating root access to only the backend server
+  - Never running the GUI with elevated privileges
+
+### 3. Battery Threshold Customization
+
+The battery conservation threshold is hardcoded to **80%**.
+
+- Custom thresholds (e.g., 60%, 90%) are not currently supported
+- This is a hardware limitation on most Lenovo laptops
+- Custom thresholds are a premium feature only available on certain high-end models
+- May be implemented in the future if there is user demand
+
+<Note>
+  If your laptop supports custom thresholds, please open an issue on GitHub. Testing is needed from users with compatible hardware.
+</Note>
+
+### 4. Tray Icon Support
+
+Tray icon support is not currently implemented.
+
+- Compose Multiplatform's built-in tray support has poor Linux compatibility
+- May be implemented in the future as the framework evolves
+- The application must remain open in a window
+
+## Minimum System Resources
+
+KVantage is lightweight and has minimal resource requirements:
+
+- **RAM**: ~100-200 MB
+- **Disk Space**: ~50 MB (JAR file + backend binary)
+- **CPU**: Any modern x86_64 processor
+
+## Verifying Compatibility
+
+Before installing KVantage, verify your system meets the requirements:
+
+<Steps>
+  <Step title="Check if you have a Lenovo laptop">
+    ```bash
+    sudo dmidecode -s system-manufacturer
+    ```
+    
+    Should output: `LENOVO` or `Lenovo`
+  </Step>
+
+  <Step title="Verify Java is installed">
+    ```bash
+    java -version
+    ```
+    
+    Should show Java 11 or later.
+  </Step>
+
+  <Step title="Check for acpi_call module">
+    ```bash
+    modinfo acpi_call
+    ```
+    
+    If not found, install it using your package manager.
+  </Step>
+
+  <Step title="Load acpi_call and verify /proc/acpi/call">
+    ```bash
+    sudo modprobe acpi_call
+    ls -l /proc/acpi/call
+    ```
+    
+    The file should exist and be owned by root.
+  </Step>
+
+  <Step title="Ensure you're not running as root">
+    ```bash
+    echo $USER
+    ```
+    
+    Should **not** be `root`.
+  </Step>
+</Steps>
+
+If all checks pass, your system is compatible with KVantage.
+
+## Getting Help
+
+If you're unsure about compatibility or encounter issues:
+
+- Check the [Installation](/installation) guide for detailed setup instructions
+- Review the [Quick Start](/quickstart) guide for common troubleshooting
+- Open an issue on [GitHub](https://github.com/kosail/KVantage/issues)
+
+## Disclaimer
+
+<Warning>
+  This software needs root privileges to run, and thus, expect undefined behavior if you run Lenovo-specific ACPI commands on a non-targeted ACPI table. **Use at your own risk.**
+</Warning>
+
+KVantage is a personal learning project and is not affiliated with Lenovo or any other brand or product.

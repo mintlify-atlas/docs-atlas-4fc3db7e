@@ -1,0 +1,170 @@
+---
+title: Installation
+description: Install KVantage on your Lenovo laptop running Linux
+---
+
+## Prerequisites
+
+Before installing KVantage, ensure you have:
+
+- A **Lenovo laptop** (required for ACPI interface compatibility)
+- **Java Runtime Environment (JRE)** installed on your system
+- The **acpi_call kernel module** loaded (see [System Requirements](/system-requirements) for details)
+
+## Download KVantage
+
+You can download the latest version of KVantage from:
+
+- **Direct download**: [Latest release (v2.1.0)](https://github.com/kosail/KVantage/releases/download/Release_v2.1.0/com.korealm.kvantage-linux-x64-2.1.0-release.jar)
+- **Releases page**: [GitHub releases](https://github.com/kosail/KVantage/releases)
+
+The application is distributed as a single `.jar` file for portability and ease of installation.
+
+## Install Java Runtime
+
+KVantage requires a Java Runtime Environment to run. Install it using your distribution's package manager:
+
+<CodeGroup>
+```bash Ubuntu/Debian
+sudo apt update
+sudo apt install default-jre
+```
+
+```bash Fedora
+sudo dnf install java-latest-openjdk
+```
+
+```bash Arch Linux
+sudo pacman -S jre-openjdk
+```
+
+```bash openSUSE
+sudo zypper install java-17-openjdk
+```
+</CodeGroup>
+
+Verify Java is installed:
+
+```bash
+java -version
+```
+
+## Installation Process
+
+<Steps>
+  <Step title="Download the JAR file">
+    Download `com.korealm.kvantage-linux-x64-2.1.0-release.jar` to your preferred location (e.g., `~/Downloads`).
+  </Step>
+
+  <Step title="Run KVantage for the first time">
+    Navigate to the download location and run:
+    
+    ```bash
+    java -jar com.korealm.kvantage-linux-x64-2.1.0-release.jar
+    ```
+    
+    <Note>
+      Do **not** run the application as root or with `sudo`. The GUI must run as a regular user. Root access is handled internally by the backend service.
+    </Note>
+  </Step>
+
+  <Step title="Complete the embedded installer">
+    On first launch, KVantage will prompt you to install the application:
+    
+    - The installer copies the JAR file to `~/.local/bin/`
+    - Creates a desktop entry at `~/.local/share/applications/kvantage.desktop`
+    - Extracts the application icon to `~/.local/share/icons/`
+    - Allows you to launch KVantage from your application menu
+    
+    <Warning>
+      If you decline the installation, you can still use KVantage as a portable application by running the JAR file directly. To prevent the installer prompt from appearing again, select "No, and don't ask me again."
+    </Warning>
+  </Step>
+
+  <Step title="Grant root permissions">
+    When KVantage starts, the backend service (kvand) will prompt for your password using your system's authentication dialog (e.g., polkit, pkexec, or sudo).
+    
+    Root access is required once per session to interact with `/proc/acpi/call` for reading and writing ACPI values.
+    
+    <Note>
+      The password prompt is for the backend daemon only. The GUI never runs with elevated privileges for security reasons.
+    </Note>
+  </Step>
+
+  <Step title="Verify installation">
+    After installation, you can launch KVantage:
+    
+    - From your application menu (search for "KVantage")
+    - From terminal: `java -jar ~/.local/bin/com.korealm.kvantage-linux-x64-2.1.0-release.jar`
+    
+    The main window should appear with your current performance profile and battery settings.
+  </Step>
+</Steps>
+
+## Portable Usage (No Installation)
+
+If you prefer to use KVantage without installing, you can run it directly:
+
+```bash
+java -jar /path/to/com.korealm.kvantage-linux-x64-2.1.0-release.jar
+```
+
+The application will prompt you to install on each launch unless you select "No, and don't ask me again."
+
+## Uninstallation
+
+To remove KVantage from your system:
+
+```bash
+# Remove the application files
+rm ~/.local/bin/com.korealm.kvantage-linux-x64-2.1.0-release.jar
+rm ~/.local/share/applications/kvantage.desktop
+rm ~/.local/share/icons/favicon.png
+
+# Remove configuration files (optional)
+rm -rf ~/.config/KVantage/
+```
+
+## Troubleshooting
+
+### Backend service fails to start
+
+If you see "Failed to initialize the backend service" error:
+
+1. Verify the acpi_call module is loaded:
+   ```bash
+   lsmod | grep acpi_call
+   ```
+
+2. Check if `/proc/acpi/call` exists:
+   ```bash
+   ls -l /proc/acpi/call
+   ```
+
+3. Ensure you're not running as root:
+   ```bash
+   echo $USER
+   # Should NOT be "root"
+   ```
+
+### Application won't start with "must never be started as root" error
+
+Never run KVantage with `sudo` or as the root user. Run it as your regular user:
+
+```bash
+# Wrong
+sudo java -jar kvantage.jar
+
+# Correct
+java -jar kvantage.jar
+```
+
+### Java version incompatibility
+
+Ensure you have Java 11 or later installed:
+
+```bash
+java -version
+```
+
+If the version is too old, update your Java installation using the commands in the [Install Java Runtime](#install-java-runtime) section.

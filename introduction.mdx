@@ -1,0 +1,131 @@
+---
+title: Introduction
+description: KVantage is a sleek desktop control center for Lenovo laptops running Linux, providing easy access to essential device settings with a beautiful Material UI design.
+---
+
+## What is KVantage?
+
+KVantage is a sleek and minimal desktop application designed specifically for **Lenovo laptop users on Linux**. Built with Kotlin and Compose Multiplatform for Desktop, it provides an elegant interface to control essential hardware features that are typically only available through Lenovo's Windows software.
+
+Inspired by the clean aesthetics of Material UI, KVantage focuses on delivering just the core features you need—no bloat, no complexity.
+
+<CardGroup cols={2}>
+  <Card title="Performance Control" icon="bolt">
+    Switch between Extreme Performance, Intelligent Cooling, and Power Saving modes
+  </Card>
+  <Card title="Battery Management" icon="battery-three-quarters">
+    Enable conservation mode to limit charging at 80% and extend battery lifespan
+  </Card>
+  <Card title="Rapid Charging" icon="bolt-lightning">
+    Toggle rapid charge on or off based on your needs
+  </Card>
+  <Card title="Beautiful Themes" icon="palette">
+    Multiple dark and light themes with optional animated backgrounds
+  </Card>
+</CardGroup>
+
+## Why KVantage?
+
+If you're a Lenovo laptop user who has switched to Linux, you've likely missed the convenient hardware controls available in Lenovo Vantage on Windows. KVantage brings those essential features to Linux with:
+
+- **Native Linux Experience**: Built specifically for Linux, using native system interfaces
+- **Clean & Minimal Design**: No bloated features, just what matters most
+- **Modern UI**: Beautiful Material UI-inspired design with customizable themes
+- **Multi-language Support**: Available in English, Spanish, Japanese, German, French, Portuguese, Korean, and Chinese
+- **Open Source**: Fully transparent, GPL v3 licensed
+
+## Target Audience
+
+KVantage is designed for:
+
+- **Lenovo laptop owners** running Linux distributions
+- Users who want **hardware-level control** over performance and battery settings
+- Linux enthusiasts who prefer **native applications** over CLI tools
+- Anyone seeking a **lightweight alternative** to heavier system management tools
+
+<Note>
+KVantage is a personal learning project created with love from Honduras and is not affiliated with Lenovo or any other brand.
+</Note>
+
+## Architecture Overview
+
+KVantage consists of two main components:
+
+### Frontend (GUI)
+Built with **Kotlin + Compose Multiplatform**, the frontend provides:
+- Modern, responsive user interface
+- Real-time status monitoring
+- Settings persistence
+- Theme customization
+- Multi-language support
+
+### Backend (kvand daemon)
+Written in **Go**, the backend daemon handles:
+- ACPI interface communication at `/proc/acpi/call`
+- Root privilege management via `pkexec`
+- Hardware state queries and modifications
+- Frontend-backend communication protocol
+
+```kotlin
+// Example: KvandClient communication from source
+val response = kvand.sendCommand("get performance")
+val sanitizedResult = response.replace("\u0000", "").trim()
+```
+
+The backend automatically escalates privileges using `pkexec` and runs as a daemon, communicating with the GUI through a simple command protocol.
+
+## System Requirements
+
+### Hardware Requirements
+<Warning>
+KVantage **only works with Lenovo laptops** that expose the ACPI interface through the `acpi_call` kernel module at `/proc/acpi/call`.
+</Warning>
+
+Most modern Lenovo laptops (IdeaPad, ThinkPad, Legion series) are compatible, but compatibility depends on your specific model's ACPI implementation.
+
+### Software Requirements
+
+- **Linux operating system** (any distribution)
+- **Java Runtime Environment** (JRE) for running the application
+- **acpi_call kernel module** installed and loaded
+- **pkexec** (polkit) for privilege escalation
+- **Root access** - required for ACPI interface operations
+
+<Info>
+The application needs root access to read from and write to `/proc/acpi/call`. This is a hardware limitation that cannot be bypassed. KVantage minimizes the security impact by:
+- Asking for the password only once per session
+- Isolating root access to the backend daemon only
+- Using the secure `pkexec` utility for privilege escalation
+</Info>
+
+## Known Limitations
+
+### ACPI Interface Compatibility
+System compatibility is limited to Lenovo laptops that expose the ACPI interface using the `acpi_call` kernel module. The application communicates with hardware through specific ACPI paths like `\_SB.PCI0.LPC0.EC0.BTSM` for battery conservation and `\_SB.PCI0.LPC0.EC0.SPMO` for performance modes.
+
+### Root Access Requirement
+The application needs root access to perform ACPI read and write operations. While this limitation cannot be bypassed due to hardware restrictions, KVantage minimizes the security concern by:
+- Requesting credentials only once at startup
+- Isolating all root operations to the backend daemon
+- Using the system's standard `pkexec` authentication
+
+### Battery Threshold
+The battery charge threshold is currently hardcoded to 80%, which is the standard value for battery conservation. Custom threshold values are not yet implemented, as testing requires hardware that supports variable thresholds.
+
+<Note>
+From the source code comments: "My laptop is a cheap one, and it has no option to set a custom threshold. I may implement this in the future if people ask for it, though I could not guarantee it works as I would not be able to test it."
+</Note>
+
+## Getting Started
+
+Ready to install KVantage? Head over to our [Quickstart Guide](/quickstart) to download and set up the application on your system.
+
+<Card title="Next Steps" icon="rocket" href="/quickstart">
+  Learn how to install and run KVantage on your Lenovo laptop
+</Card>
+
+---
+
+<Info>
+**Disclaimer**: This software specifically targets Lenovo laptops. Please do NOT run it if your laptop is not a Lenovo device. The backend assumes it is running on a Lenovo laptop with a known/defined ACPI table. Running Lenovo-specific ACPI commands on non-Lenovo hardware may result in undefined behavior. Use at your own risk.
+</Info>

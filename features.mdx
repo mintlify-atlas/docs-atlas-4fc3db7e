@@ -1,0 +1,468 @@
+---
+title: Features
+description: Comprehensive guide to all features available in KVantage, from performance profiles to battery management and visual customization.
+---
+
+## Overview
+
+KVantage provides essential hardware control features for Lenovo laptops on Linux. All features interact directly with your laptop's ACPI interface to provide the same functionality you'd find in Lenovo Vantage on Windows.
+
+<Note>
+All features require the application to be running with root privileges to access the ACPI interface at `/proc/acpi/call`.
+</Note>
+
+## Core Features
+
+<CardGroup cols={2}>
+  <Card title="Performance Profiles" icon="gauge-high">
+    Switch between three power profiles to optimize for performance or battery life
+  </Card>
+  <Card title="Battery Conservation" icon="leaf">
+    Limit battery charge to 80% to extend battery lifespan
+  </Card>
+  <Card title="Rapid Charge" icon="bolt">
+    Enable fast charging when you need quick battery top-ups
+  </Card>
+  <Card title="Battery Monitoring" icon="battery-half">
+    Real-time battery level display with visual progress indicator
+  </Card>
+  <Card title="Theme Customization" icon="palette">
+    Multiple beautiful themes with animated backgrounds
+  </Card>
+  <Card title="Multi-language" icon="globe">
+    Support for 8 languages with automatic locale detection
+  </Card>
+</CardGroup>
+
+---
+
+## Performance Profiles
+
+Control your laptop's performance mode to balance between power and efficiency. The application provides three distinct profiles:
+
+### Available Modes
+
+<Accordion title="Extreme Performance (0x0012B001)">
+  Maximizes CPU and GPU performance for demanding tasks. Your laptop will run at higher clock speeds and may generate more heat and noise.
+  
+  **ACPI Command**: `\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x0012B001`
+  
+  **Best for**: Gaming, video editing, 3D rendering, compilation tasks
+</Accordion>
+
+<Accordion title="Intelligent Cooling / Balanced (0x000FB001)">
+  The default balanced mode that intelligently adjusts performance based on workload. Provides good performance while managing thermals.
+  
+  **ACPI Command**: `\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x000FB001`
+  
+  **Best for**: General productivity, web browsing, light development
+</Accordion>
+
+<Accordion title="Power Saving (0x0013B001)">
+  Prioritizes battery life by reducing performance. Ideal for extending battery runtime when away from power.
+  
+  **ACPI Command**: `\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x0013B001`
+  
+  **Best for**: Reading, note-taking, traveling, extending battery life
+</Accordion>
+
+### How It Works
+
+The performance profiles are implemented using a segmented button control in the UI:
+
+```kotlin
+// From PowerProfiler.kt
+val result = kvand.sendCommand("get performance")
+val sanitizedResult = result.replace("\u0000", "").trim()
+selectedIndex = when (sanitizedResult) {
+    "0x0" -> 1 // Extreme Performance
+    "0x1" -> 0 // Intelligent Cooling (Balanced)
+    else -> 2 // Power Saving
+}
+```
+
+The application reads the current performance mode on startup and displays it with visual icons:
+- ⚡ Bolt icon for Extreme Performance
+- 💨 Air icon for Intelligent Cooling
+- 🍃 Leaf icon for Power Saving
+
+<Info>
+Changes to performance profiles take effect immediately and persist until you change them again or restart your laptop.
+</Info>
+
+---
+
+## Battery Conservation Mode
+
+Battery Conservation Mode limits your battery charge to 80% to significantly extend your battery's lifespan. This is especially useful if you primarily use your laptop while plugged in.
+
+### Why 80%?
+
+Lithium-ion batteries last longer when kept between 20% and 80% charge. By limiting the maximum charge to 80%, you can potentially double your battery's lifespan.
+
+### Implementation Details
+
+```kotlin
+// From BatteryThreshold.kt
+val result = kvand.sendCommand("get conservation")
+val sanitizedResult = result.replace("\u0000", "").trim()
+isChecked = sanitizedResult == "0x1"
+```
+
+**ACPI Commands**:
+- Enable: `\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x03`
+- Disable: `\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x05`
+- Status Query: `\_SB.PCI0.LPC0.EC0.BTSM`
+
+<Warning>
+Battery Conservation Mode is automatically disabled when Rapid Charge is enabled, as the two features are mutually exclusive.
+</Warning>
+
+### User Interface
+
+The feature includes:
+- A toggle switch to enable/disable conservation mode
+- An explanatory warning message when enabled
+- Automatic conflict resolution with Rapid Charge
+
+<Note>
+Custom battery threshold values (other than 80%) are not currently supported. This feature may be added in the future based on user demand and hardware testing availability.
+</Note>
+
+---
+
+## Rapid Charge
+
+Rapid Charge enables faster battery charging when you need a quick power boost. When enabled, your laptop will charge at higher currents to fill the battery faster.
+
+### Trade-offs
+
+**Advantages**:
+- Significantly faster charging times
+- Useful when you need to charge quickly between meetings
+- Can be toggled on-demand
+
+**Disadvantages**:
+- Higher heat generation during charging
+- Slightly reduced long-term battery health if used constantly
+- Incompatible with Battery Conservation Mode
+
+### Implementation
+
+```kotlin
+// From RapidCharge.kt
+val result = kvand.sendCommand("get rapid")
+val sanitizedResult = result.replace("\u0000", "").trim()
+isChecked = sanitizedResult == "0x1"
+```
+
+**ACPI Commands**:
+- Enable: `\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x07`
+- Disable: `\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x08`
+- Status Query: `\_SB.PCI0.LPC0.EC0.QCHO`
+
+<Info>
+When you enable Rapid Charge, Battery Conservation Mode is automatically disabled to prevent conflicts.
+</Info>
+
+---
+
+## Battery Life Monitoring
+
+KVantage displays your current battery level with a beautiful visual progress indicator. This feature can be toggled on or off in the settings.
+
+### Display Features
+
+- **Visual Progress Bar**: Horizontal bar showing charge level from 0% to 100%
+- **Percentage Display**: Precise battery level shown as a decimal (e.g., 87.3%)
+- **Color Coding**: Uses theme colors for visual consistency
+- **Error Handling**: Graceful fallback if battery interface is not found
+
+```kotlin
+// From BatteryLife.kt - Display logic
+LinearProgressIndicator(
+    progress = remainingLife / 100F,
+    color = MaterialTheme.colorScheme.tertiary,
+    backgroundColor = MaterialTheme.colorScheme.tertiaryContainer,
+    modifier = Modifier.size(300.dp, 15.dp).clip(RoundedCornerShape(20))
+)
+```
+
+### Battery Detection
+
+The application reads battery information from `/sys/class/power_supply/` and allows you to configure which battery device to monitor (default: `BAT0`).
+
+<Accordion title="Error States">
+  The battery monitor handles two error conditions:
+  
+  **Interface Not Found (-1)**
+  - Displayed when the battery interface cannot be accessed
+  - Shows message: "Battery interface not found"
+  
+  **Parsing Failed (0)**
+  - Occurs when battery data cannot be parsed correctly
+  - Shows message: "Battery parsing failed"
+</Accordion>
+
+### Settings
+
+You can:
+- **Toggle visibility**: Show or hide the battery indicator entirely
+- **Configure battery name**: Change from `BAT0` to `BAT1` or other battery devices
+- Settings persist between application sessions
+
+---
+
+## Visual Customization
+
+### Themes
+
+KVantage includes four beautiful themes, each available in dark and light variants:
+
+<CardGroup cols={2}>
+  <Card title="Whispering Sea" icon="water">
+    The default theme with calming ocean-inspired colors and optional animated gradient background
+  </Card>
+  <Card title="Material" icon="material-ui">
+    Classic Material Design colors with clean, professional aesthetics
+  </Card>
+  <Card title="Kanagawa" icon="mountain">
+    Inspired by traditional Japanese art, featuring muted, sophisticated colors
+  </Card>
+  <Card title="Dracula" icon="moon">
+    Popular dark theme with vibrant accents and excellent contrast
+  </Card>
+</CardGroup>
+
+### Theme Implementation
+
+```kotlin
+// From ThemeType.kt
+enum class ThemeType (val index: Int) {
+    SEA (0),
+    MATERIAL (1),
+    KANAGAWA (2),
+    DRACULA (3);
+}
+```
+
+Each theme provides carefully selected color palettes for:
+- Primary, secondary, and tertiary colors
+- Surface and background colors
+- Text and icon colors with proper contrast
+- Active and inactive states
+
+### Animated Backgrounds
+
+<Info>
+The Whispering Sea theme includes an optional animated gradient background that creates a subtle, flowing effect.
+</Info>
+
+You can toggle animated backgrounds in the settings:
+- **Enabled**: Beautiful gradient animations enhance the visual experience
+- **Disabled**: Static background for better performance or personal preference
+
+### Dark and Light Modes
+
+Every theme supports both dark and light variants:
+- Toggle between modes in settings
+- Proper contrast maintained in both modes
+- All UI elements adapt to the selected mode
+
+```kotlin
+// From Settings.kt - Theme configuration
+data class Settings(
+    val isDarkMode: Boolean = false,
+    val isAnimatedBackground: Boolean = true,
+    val isRemainingBatteryLifeVisible: Boolean = true,
+    val batteryName: String = "BAT0",
+    val selectedThemeIndex: Int = 0
+)
+```
+
+---
+
+## Internationalization
+
+KVantage automatically detects your system locale and displays the interface in your language.
+
+### Supported Languages
+
+- **English** (en) - Native translation
+- **Spanish** (es) - Native translation
+- **Japanese** (ja) - Native translation
+- **German** (de) - AI-assisted translation
+- **French** (fr) - AI-assisted translation
+- **Portuguese** (pt) - AI-assisted translation
+- **Korean** (kr) - AI-assisted translation
+- **Chinese** (zh) - AI-assisted translation
+
+<Note>
+The application automatically switches language based on your system's locale setting. English, Spanish, and Japanese translations were created by the developer, while other languages use AI-assisted translations.
+</Note>
+
+### Implementation
+
+All strings are managed through Compose Multiplatform's resource system:
+
+```kotlin
+// Example: Using localized strings
+Text(
+    text = stringResource(Res.string.performance_profile),
+    fontSize = 20.sp,
+    color = MaterialTheme.colorScheme.onSurface
+)
+```
+
+Localization files are located in:
+- `/composeResources/values/strings.xml` (English)
+- `/composeResources/values-es/strings.xml` (Spanish)
+- `/composeResources/values-ja/strings.xml` (Japanese)
+- And so on for each supported language
+
+---
+
+## Settings Management
+
+All your preferences are automatically saved and restored:
+
+### Persisted Settings
+
+- Selected theme and color mode (dark/light)
+- Animated background preference
+- Battery life visibility
+- Battery device name
+- Selected theme index
+
+### Settings Dialog
+
+Access comprehensive settings through the settings dialog:
+
+```kotlin
+// Settings are managed through SettingsManager utility
+// All changes are automatically saved to disk
+```
+
+The settings dialog provides:
+- **Theme Controls**: Toggle dark mode and select theme
+- **Animation Controls**: Enable/disable animated backgrounds
+- **Battery Controls**: Show/hide battery monitor and configure device name
+- **Visual Preview**: Changes apply immediately
+
+<Info>
+Settings are stored in your user's application data directory and persist between sessions.
+</Info>
+
+---
+
+## Planned Features
+
+### System Tray Support
+
+System tray icon support is planned for a future release. Recent improvements to Compose Multiplatform's Linux support make this feature more feasible.
+
+<Note>
+**Status**: Under consideration
+
+From the developer: "Compose Multiplatform has evolved a lot in the last year, so this might now be possible! I will look into this later."
+</Note>
+
+Previous limitations with Linux tray support included:
+- Poor built-in tray detection on Linux desktop environments
+- Compatibility issues with KDE, Cinnamon, and Hyprland
+- Third-party library limitations
+
+### Custom Battery Thresholds
+
+The ability to set custom battery charge thresholds (other than 80%) may be implemented in the future based on:
+- User demand and feedback
+- Availability of hardware for testing
+- ACPI interface support verification
+
+---
+
+## Technical Architecture
+
+### Frontend-Backend Communication
+
+The application uses a simple command-based protocol between the GUI and daemon:
+
+```go
+// Backend command examples from main.go
+"get performance"  // Query current performance mode
+"set performance 0" // Set to Intelligent Cooling
+"get conservation" // Check battery conservation status
+"set conservation 1" // Enable battery conservation
+"get rapid"       // Check rapid charge status
+"set rapid 0"     // Disable rapid charge
+```
+
+### ACPI Interface
+
+All hardware control is performed through `/proc/acpi/call`:
+
+```go
+// From main.go - ACPI paths
+const (
+    GetBattConservationStatus   = "\\_SB.PCI0.LPC0.EC0.BTSM"
+    GetRapidChargeStatus        = "\\_SB.PCI0.LPC0.EC0.QCHO"
+    GetPerformanceModeStatus    = "\\_SB.PCI0.LPC0.EC0.SPMO"
+)
+```
+
+<Warning>
+**Important**: ACPI write operations take approximately 1 second to complete and take effect. The GUI handles this asynchronously to prevent freezing.
+</Warning>
+
+### State Management
+
+The application uses Compose state management with coroutines:
+
+```kotlin
+// State is fetched asynchronously on component initialization
+LaunchedEffect(Unit) {
+    val result = withContext(Dispatchers.IO) {
+        kvand.sendCommand("get performance")
+    }
+    // Update UI state
+}
+```
+
+All hardware state queries and updates happen on IO dispatchers to keep the UI responsive.
+
+---
+
+## Feature Summary
+
+<CardGroup cols={1}>
+  <Card title="Current Features" icon="check">
+    ✅ Performance profile switching (3 modes)
+    
+    ✅ Battery conservation mode (80% limit)
+    
+    ✅ Rapid charge toggle
+    
+    ✅ Battery life monitoring with optional display
+    
+    ✅ 4 themes with dark/light variants
+    
+    ✅ Animated backgrounds
+    
+    ✅ 8 language translations
+    
+    ✅ Settings persistence
+    
+    ✅ Embedded installer
+  </Card>
+  <Card title="Future Considerations" icon="clock">
+    ⏳ System tray icon support
+    
+    ⏳ Custom battery threshold values
+  </Card>
+</CardGroup>
+
+---
+
+<Note>
+For installation instructions, system requirements, and troubleshooting, see the [Quickstart Guide](/quickstart).
+</Note>

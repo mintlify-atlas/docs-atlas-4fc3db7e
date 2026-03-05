@@ -1,0 +1,447 @@
+---
+title: "Permissions"
+description: "Understanding privilege requirements and security model"
+icon: "shield-halved"
+---
+
+KVantage requires root access to function, but implements this carefully to minimize security risks. This page explains why elevated privileges are needed, how KVantage handles them securely, and how to troubleshoot permission issues.
+
+## Why Root Access is Required
+
+### ACPI Write Operations
+
+KVantage controls your laptop's battery and performance settings by writing ACPI commands to `/proc/acpi/call`. This file is owned by root and requires elevated privileges to access:
+
+```bash
+ls -l /proc/acpi/call
+-rw-r--r-- 1 root root 0 Mar 5 10:00 /proc/acpi/call
+```
+
+The kernel enforces this restriction because ACPI calls can:
+- Change hardware behavior
+- Access firmware memory
+- Potentially damage hardware if used incorrectly
+- Expose sensitive system information
+
+There is **no way to bypass this requirement**. Any application that needs to write to `/proc/acpi/call` must have root privileges.
+
+<Note>
+  The README acknowledges this limitation:
+  
+  > The app needs root access to perform the ACPI read and writes at `/proc/acpi/call`. This is a limitation that cannot be bypassed.
+</Note>
+
+## How KVantage Handles Privileges Securely
+
+### Privilege Separation Architecture
+
+KVantage uses a **two-process architecture** to minimize security risks:
+
+1. **GUI (Frontend)**: Runs as your regular user, handles the interface
+2. **Backend (kvand)**: Runs with elevated privileges, handles ACPI communication
+
+This separation means:
+- Your graphical interface never runs as root
+- Only a small, isolated daemon has elevated privileges
+- The backend exposes a limited, controlled API to the frontend
+- Most of the application code runs without root access
+
+```
+┌─────────────────┐          ┌──────────────────┐
+│   GUI (User)    │  ←IPC→   │  kvand (Root)    │
+│  Main.kt        │          │  Backend Daemon  │
+│  KvandClient.kt │          │                  │
+└─────────────────┘          └────────┬─────────┘
+                                      │
+                                      ▼
+                             /proc/acpi/call
+```
+
+### Security Checks in Main.kt
+
+The application actively prevents being run as root. See `Main.kt:24`:
+
+```kotlin
+if (isRunningAsRoot()) forbidStartAsRoot(::exitApplication)
+```
+
+The `isRunningAsRoot()` function checks multiple indicators:
+
+```kotlin
+fun isRunningAsRoot(): Boolean {
+    return System.getProperty("user.name") == "root" ||
+            System.getenv("USER") == "root" ||
+            System.getenv("SUDO_UID") != null
+}
+```
+
+This checks:
+- **`user.name`**: Java property for current user
+- **`USER`**: Environment variable set by the shell
+- **`SUDO_UID`**: Only present if running via sudo
+
+If any check indicates root execution, the application displays an error and exits:
+
+```kotlin
+fun forbidStartAsRoot(exitApp: () -> Unit) {
+    javax.swing.JOptionPane.showMessageDialog(
+        null,
+        "This app needs root access to work, but it manages it to escalate it internally and securely, just for a small portion of it (the backend).\nThe app GUI (the graphical interface) should NEVER be started as root for obvious security reasons.",
+        "Critical Error: App must never be started as root",
+        javax.swing.JOptionPane.ERROR_MESSAGE
+    )
+    exitApp()
+}
+```
+
+<Warning>
+  This is not a suggestion—it's a hard requirement. Running the GUI as root would expose your entire desktop environment to elevated privileges, creating a massive security hole.
+</Warning>
+
+## Backend Privilege Escalation
+
+### How the Backend Starts
+
+The backend daemon is launched by the GUI with automatic privilege escalation. From `KvandClient.kt:17-35`:
+
+```kotlin
+// Extract embedded backend binary to temp file
+val embeddedBackend = this::class.java.getResourceAsStream("/backend/kvand")
+val tempFile = File.createTempFile("kvantage_service", null)
+tempFile.deleteOnExit()
+
+// Copy and make executable
+embeddedBackend.use { input ->
+    FileOutputStream(tempFile).use { output ->
+        input.copyTo(output)
+    }
+}
+tempFile.setExecutable(true)
+
+// Launch the backend process
+val process = ProcessBuilder(tempFile.absolutePath)
+    .redirectErrorStream(true)
+    .start()
+```
+
+When the backend binary executes, it requests root privileges through your system's authentication mechanism (polkit, sudo, etc.).
+
+### Backend Handshake
+
+The GUI waits for the backend to be ready before showing the main window (`KvandClient.kt:40-45`):
+
+```kotlin
+// Wait for backend to signal readiness
+while (true) {
+    val line = reader.readLine() ?: handleBackendDeath()
+    if (line.trim() == "READY") break
+}
+```
+
+If the backend fails to start (usually due to denied permissions), `handleBackendDeath()` is called (`KvandClient.kt:54-66`):
+
+```kotlin
+private fun handleBackendDeath(): Nothing {
+    javax.swing.JOptionPane.showMessageDialog(
+        null,
+        "Failed to initialize the backend service.\nRoot permissions are required to run this application.",
+        "Critical Error",
+        javax.swing.JOptionPane.ERROR_MESSAGE
+    )
+    AppLogger.error("KvandClient", "Backend service failed to start. (likely root permission issue)")
+    exitProcess(1)
+}
+```
+
+## Password Prompt Behavior
+
+### When You'll Be Prompted
+
+You'll see a password prompt when:
+
+1. **First launching KVantage**: The backend needs to start with elevated privileges
+2. **After a system restart**: The backend doesn't persist between reboots
+3. **After your sudo timeout expires**: If you run KVantage again after the sudo credential cache clears
+
+<Note>
+  The README notes: "it was minimized by asking for the password once for the entire execution of the program."
+  
+  You should only need to enter your password **once per session** when starting KVantage.
+</Note>
+
+### What the Prompt Looks Like
+
+The exact appearance depends on your Linux distribution:
+
+- **Polkit (GNOME, KDE)**: Graphical dialog with your desktop theme
+- **sudo**: Terminal password prompt (if running from terminal)
+- **pkexec**: Graphical polkit authentication dialog
+
+The prompt will ask for your user password, **not** the root password (unless root has a different password on your system).
+
+### Authentication Methods
+
+KVantage works with standard Linux authentication mechanisms:
+
+- **polkit**: Modern desktop privilege escalation
+- **sudo**: Traditional command-line privilege escalation
+- **wheel/sudo group membership**: Your user must be in a privileged group
+
+## What Happens If You Deny Sudo
+
+If you cancel the password prompt or enter an incorrect password:
+
+1. The backend process fails to start
+2. The GUI detects this when waiting for the "READY" signal
+3. `handleBackendDeath()` is called
+4. An error dialog appears: **"Failed to initialize the backend service"**
+5. The application exits
+
+**KVantage cannot function without root access.** There is no fallback or limited mode—ACPI access is required for every feature.
+
+<Warning>
+  If you see repeated password prompts or the backend fails immediately, check that:
+  - Your user account has sudo privileges
+  - Your password is correct
+  - Polkit is running (`systemctl status polkit`)
+  - You're not accidentally blocking the authentication dialog
+</Warning>
+
+## Sudoers Configuration (Optional)
+
+### Avoiding Password Prompts
+
+If you run KVantage frequently and want to avoid repeated password prompts, you can configure passwordless sudo for the backend binary.
+
+<Warning>
+  This reduces security by allowing the backend to start with root privileges without authentication. Only do this if you understand the implications.
+</Warning>
+
+**Option 1: Passwordless sudo for kvand (if installed)**
+
+If you've installed KVantage using the built-in installer, the backend is in your user bin folder.
+
+Create a sudoers rule:
+
+```bash
+sudo visudo -f /etc/sudoers.d/kvantage
+```
+
+Add the following line (replace `username` with your actual username):
+
+```
+username ALL=(ALL) NOPASSWD: /home/username/.local/bin/kvand
+```
+
+Save and exit. Now the backend can start without a password prompt.
+
+**Option 2: Allow all processes from your user's bin**
+
+```
+username ALL=(ALL) NOPASSWD: /home/username/.local/bin/*
+```
+
+This is less secure as it affects all executables in that directory.
+
+**Option 3: Use polkit rules (more complex but cleaner)**
+
+Create `/etc/polkit-1/rules.d/50-kvantage.rules`:
+
+```javascript
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/home/username/.local/bin/kvand" &&
+        subject.user == "username") {
+        return polkit.Result.YES;
+    }
+});
+```
+
+Restart polkit:
+
+```bash
+sudo systemctl restart polkit
+```
+
+<Note>
+  The embedded installer copies the app into your local user bin folder, as mentioned in the README:
+  
+  > I implemented a embedded installer that will copy the app into your local user bin folder, and it works fantastically.
+</Note>
+
+## Verifying Privilege Setup
+
+### Check sudo access
+
+```bash
+sudo -v
+```
+
+If this prompts for a password and succeeds, your sudo is working correctly.
+
+### Check group membership
+
+```bash
+groups $USER
+```
+
+You should see `wheel` (Fedora/Arch) or `sudo` (Ubuntu/Debian) in the output.
+
+### Add user to sudo group (if missing)
+
+```bash
+# Fedora/RHEL/Arch
+sudo usermod -aG wheel $USER
+
+# Ubuntu/Debian
+sudo usermod -aG sudo $USER
+```
+
+**Log out and back in** for group changes to take effect.
+
+### Check polkit status
+
+```bash
+systemctl status polkit
+```
+
+Should show `active (running)`. If not:
+
+```bash
+sudo systemctl start polkit
+sudo systemctl enable polkit
+```
+
+## Security Best Practices
+
+### What KVantage Does Right
+
+✅ **Privilege separation**: GUI never runs as root
+✅ **Limited attack surface**: Only backend has elevated privileges
+✅ **Active root detection**: Refuses to start as root
+✅ **Minimal privilege duration**: Backend only runs while app is active
+✅ **Transparent behavior**: Clear error messages when permissions fail
+
+### What You Should Do
+
+✅ **Run as your regular user**: Never use `sudo` to launch KVantage
+✅ **Keep your system updated**: Ensure polkit and sudo are current
+✅ **Use strong passwords**: Your sudo password protects system access
+✅ **Review sudoers carefully**: Only add passwordless rules if absolutely needed
+✅ **Monitor running processes**: Backend daemon stops when GUI exits
+
+### What NOT to Do
+
+❌ **Don't run GUI as root**: The app explicitly prevents this
+❌ **Don't disable authentication entirely**: Always require some form of privilege escalation
+❌ **Don't give KVantage more permissions than needed**: It only needs to run its own backend
+❌ **Don't share sudo passwords**: Each user should use their own account
+
+## Comparison to Other Tools
+
+Many Linux laptop control tools face similar privilege requirements:
+
+| Tool | Privilege Method | Separation |
+|------|------------------|------------|
+| **KVantage** | Backend daemon with sudo/polkit | ✅ Yes |
+| **TLP** | Systemd service (root) | ✅ Yes |
+| **auto-cpufreq** | Systemd service (root) | ✅ Yes |
+| **batmanager** | CLI runs as root directly | ❌ No |
+
+KVantage's approach of privilege separation with a backend daemon is industry-standard for desktop applications that need root access.
+
+## Troubleshooting Permission Issues
+
+<AccordionGroup>
+  <Accordion icon="circle-xmark" title="Password prompt never appears">
+    If you don't see a password prompt when starting KVantage:
+
+    **Run from terminal to see errors:**
+    ```bash
+    java -jar kvantage.jar
+    ```
+
+    **Check if polkit is running:**
+    ```bash
+    systemctl status polkit
+    ```
+
+    **Try running with explicit sudo:**
+    This is a diagnostic step only—don't do this regularly:
+    ```bash
+    sudo -v  # Test if sudo works at all
+    ```
+  </Accordion>
+
+  <Accordion icon="rotate" title="Password prompt appears repeatedly">
+    If you're prompted for your password every time you interact with KVantage:
+
+    This usually means the backend is crashing and restarting. Check:
+
+    **Backend logs:**
+    ```bash
+    journalctl --user -xe | grep kvantage
+    ```
+
+    **System logs:**
+    ```bash
+    sudo dmesg | tail -50
+    ```
+
+    **Verify ACPI module:**
+    ```bash
+    lsmod | grep acpi_call
+    ```
+
+    See [ACPI Interface](/troubleshooting/acpi-interface) for ACPI troubleshooting.
+  </Accordion>
+
+  <Accordion icon="ban" title="Authentication keeps failing">
+    If you enter the correct password but authentication fails:
+
+    **Verify sudo access:**
+    ```bash
+    sudo echo "test"
+    ```
+
+    If this fails, your sudo configuration is broken.
+
+    **Check PAM configuration:**
+    ```bash
+    sudo pam-auth-update --force
+    ```
+
+    **Reset sudo timeout:**
+    ```bash
+    sudo -k  # Clear cached credentials
+    sudo -v  # Re-authenticate
+    ```
+  </Accordion>
+
+  <Accordion icon="user-slash" title="User not in sudoers file">
+    If you see "user is not in the sudoers file":
+
+    You don't have permission to use sudo. This requires admin intervention.
+
+    **If you have physical access to the machine:**
+
+    1. Boot into recovery mode or single-user mode
+    2. Mount the filesystem as read-write
+    3. Run `visudo` and add: `username ALL=(ALL) ALL`
+
+    **If someone else administers the system:**
+
+    Ask them to add you to the appropriate group:
+    ```bash
+    sudo usermod -aG wheel username    # Fedora/Arch
+    sudo usermod -aG sudo username     # Ubuntu/Debian
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Further Reading
+
+- [sudo manual page](https://www.sudo.ws/docs/man/sudo.man/)
+- [polkit documentation](https://www.freedesktop.org/software/polkit/docs/latest/)
+- [Linux privilege escalation security](https://www.kernel.org/doc/html/latest/security/)
+- [ACPI Interface details](/troubleshooting/acpi-interface)

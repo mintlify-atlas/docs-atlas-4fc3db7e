@@ -1,0 +1,355 @@
+---
+title: "ACPI Interface"
+description: "Understanding the ACPI interface and acpi_call kernel module"
+icon: "microchip"
+---
+
+KVantage relies on the ACPI (Advanced Configuration and Power Interface) to communicate with your Lenovo laptop's firmware. This page explains what ACPI is, why it's required, and how to set it up.
+
+## What is ACPI?
+
+ACPI is a standard that allows the operating system to communicate with hardware firmware for power management and device configuration. Lenovo laptops expose special ACPI methods that control:
+
+- Battery charge thresholds (conservation mode)
+- Performance profiles (power saving, extreme performance, intelligent cooling)
+- Rapid charge functionality
+- Battery status and health information
+
+<Note>
+  ACPI is a firmware-level interface. This is why KVantage requires elevated privileges—it's directly communicating with your laptop's embedded controller.
+</Note>
+
+## The acpi_call Kernel Module
+
+Linux doesn't expose ACPI methods to userspace by default. The `acpi_call` kernel module creates a special file at `/proc/acpi/call` that allows programs to invoke ACPI methods.
+
+### How it works
+
+1. KVantage backend (kvand) writes ACPI method calls to `/proc/acpi/call`
+2. The kernel module executes these calls against the firmware
+3. Results are read back from `/proc/acpi/call`
+4. The backend parses the response and returns it to the GUI
+
+<Warning>
+  Writing to `/proc/acpi/call` requires root privileges. This is enforced by the kernel for security—arbitrary ACPI calls could potentially damage hardware or expose sensitive data.
+</Warning>
+
+### Why KVantage needs acpi_call
+
+Unlike some system settings that can be controlled through sysfs or other interfaces, Lenovo's battery and performance controls are **only** accessible through vendor-specific ACPI methods. There is no alternative interface.
+
+The backend implementation in `KvandClient.kt:70` shows how commands are sent:
+
+```kotlin
+fun sendCommand(command: String): String {
+    writer.write(command)
+    writer.newLine()
+    writer.flush()
+    
+    val response = reader.readLine()
+    return response ?: "ERROR"
+}
+```
+
+These commands ultimately become ACPI calls written to `/proc/acpi/call`.
+
+## Installing acpi_call
+
+The `acpi_call` module is not included in the Linux kernel by default. You must install it separately.
+
+<AccordionGroup>
+  <Accordion icon="arch" title="Arch Linux">
+    Install from the official repositories:
+    ```bash
+    sudo pacman -S acpi_call
+    ```
+
+    Load the module:
+    ```bash
+    sudo modprobe acpi_call
+    ```
+
+    To load automatically at boot:
+    ```bash
+    echo "acpi_call" | sudo tee /etc/modules-load.d/acpi_call.conf
+    ```
+  </Accordion>
+
+  <Accordion icon="fedora" title="Fedora">
+    Install from RPM Fusion or build from source:
+
+    **Option 1: RPM Fusion (recommended)**
+    ```bash
+    # Enable RPM Fusion if not already enabled
+    sudo dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
+
+    # Install acpi_call
+    sudo dnf install kernel-devel akmod-acpi_call
+    ```
+
+    Wait a few minutes for the module to build, then:
+    ```bash
+    sudo modprobe acpi_call
+    ```
+
+    **Option 2: Build from source**
+    ```bash
+    # Install build dependencies
+    sudo dnf install kernel-devel gcc make
+
+    # Clone and build
+    git clone https://github.com/nix-community/acpi_call.git
+    cd acpi_call
+    make
+    sudo make install
+    sudo modprobe acpi_call
+    ```
+  </Accordion>
+
+  <Accordion icon="ubuntu" title="Ubuntu/Debian">
+    **Option 1: Pre-built package (Ubuntu)**
+    ```bash
+    sudo apt update
+    sudo apt install acpi-call-dkms
+    ```
+
+    **Option 2: Build from source**
+    ```bash
+    # Install build dependencies
+    sudo apt install git build-essential linux-headers-$(uname -r)
+
+    # Clone and build
+    git clone https://github.com/nix-community/acpi_call.git
+    cd acpi_call
+    make
+    sudo make install
+    sudo modprobe acpi_call
+    ```
+
+    To load at boot:
+    ```bash
+    echo "acpi_call" | sudo tee /etc/modules
+    ```
+  </Accordion>
+
+  <Accordion icon="opensuse" title="openSUSE">
+    Build from source:
+    ```bash
+    # Install build dependencies
+    sudo zypper install kernel-devel gcc make
+
+    # Clone and build
+    git clone https://github.com/nix-community/acpi_call.git
+    cd acpi_call
+    make
+    sudo make install
+    sudo modprobe acpi_call
+    ```
+
+    To load at boot:
+    ```bash
+    echo "acpi_call" | sudo tee /etc/modules-load.d/acpi_call.conf
+    ```
+  </Accordion>
+
+  <Accordion icon="nix" title="NixOS">
+    Add to your `configuration.nix`:
+    ```nix
+    boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
+    boot.kernelModules = [ "acpi_call" ];
+    ```
+
+    Rebuild your system:
+    ```bash
+    sudo nixos-rebuild switch
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Verifying Installation
+
+### Check if the module is loaded
+
+```bash
+lsmod | grep acpi_call
+```
+
+You should see output like:
+```
+acpi_call              16384  0
+```
+
+### Check if /proc/acpi/call exists
+
+```bash
+ls -l /proc/acpi/call
+```
+
+You should see:
+```
+-rw-r--r-- 1 root root 0 Mar 5 10:00 /proc/acpi/call
+```
+
+<Warning>
+  Notice the file is owned by root with 644 permissions. This is why the backend daemon needs to run with elevated privileges.
+</Warning>
+
+### Test basic ACPI access
+
+<Warning>
+  **Do not run arbitrary ACPI calls!** This is for diagnostic purposes only. Incorrect ACPI calls can potentially hang your system or cause hardware issues.
+</Warning>
+
+To verify the module is functional (without making any changes):
+
+```bash
+# Read the ACPI call interface (requires root)
+sudo cat /proc/acpi/call
+```
+
+If you see output (even if it's just "not called" or similar), the module is working.
+
+## Lenovo Laptop Compatibility
+
+### Why only Lenovo?
+
+Each laptop manufacturer uses different ACPI method names and parameters. For example:
+
+- **Lenovo** uses `\_SB.PCI0.LPC0.EC0.VPC0` namespace for battery controls
+- **Dell** uses `\_SB.BAT0` with different method names
+- **HP** uses `\_SB.WMID` for their WMI interface
+- **ASUS** uses `\_SB.ATKD` for keyboard and system controls
+
+KVantage's backend is hardcoded with Lenovo-specific ACPI paths and method signatures. The README explicitly states:
+
+> System compatibility is limited to Lenovo laptops that expose the ACPI interface using the acpi_call kernel module.
+
+### What happens on non-Lenovo laptops?
+
+1. The `acpi_call` module will load successfully
+2. `/proc/acpi/call` will exist
+3. KVantage will attempt to call Lenovo ACPI methods
+4. **The firmware will return errors** because those methods don't exist
+5. KVantage features will not work
+
+In the worst case, if your laptop happens to have ACPI methods with the same names but different behaviors, calling them could cause undefined behavior.
+
+<Warning>
+  **Do not run KVantage on non-Lenovo laptops.** The disclaimer in the README warns:
+  
+  > Please do NOT run it if your laptop is not Lenovo. This software needs root privileges to run, and thus, expect undefined behavior if you run Lenovo specific ACPI commands in a non-targeted ACPI table. Use it as your own risk.
+</Warning>
+
+### Verify you have a Lenovo laptop
+
+```bash
+sudo dmidecode -s system-manufacturer
+```
+
+Output should be:
+```
+LENOVO
+```
+
+Also check the product name:
+```bash
+sudo dmidecode -s system-product-name
+```
+
+This will show your laptop model (e.g., "ThinkPad X1 Carbon Gen 9", "IdeaPad 5 Pro", etc.).
+
+## ACPI Table Differences Between Models
+
+Even among Lenovo laptops, not all models support all features:
+
+- **ThinkPad series**: Generally have the most complete ACPI support
+- **IdeaPad series**: May have limited battery threshold options
+- **Budget models**: May only support basic features
+
+The README notes:
+
+> The only thing that is not yet implemented is the option to set a customized battery threshold. By now, it is hardcoded to the default value (which is 80%).
+
+This limitation exists because the developer's laptop doesn't expose custom threshold controls in its ACPI table.
+
+## Troubleshooting ACPI Issues
+
+<AccordionGroup>
+  <Accordion icon="exclamation-triangle" title="Module fails to load">
+    If `modprobe acpi_call` fails:
+
+    **Check for kernel header mismatch:**
+    ```bash
+    uname -r
+    ls /lib/modules/$(uname -r)/
+    ```
+
+    If the directory doesn't exist, install kernel headers:
+    ```bash
+    # Arch
+    sudo pacman -S linux-headers
+
+    # Ubuntu/Debian
+    sudo apt install linux-headers-$(uname -r)
+
+    # Fedora
+    sudo dnf install kernel-devel
+    ```
+
+    Then rebuild acpi_call.
+  </Accordion>
+
+  <Accordion icon="lock" title="Permission denied on /proc/acpi/call">
+    This is expected. The file requires root access.
+
+    KVantage handles this by:
+    1. Running the GUI as your regular user
+    2. Starting the backend daemon with elevated privileges (via sudo/polkit)
+    3. The backend reads/writes `/proc/acpi/call` on behalf of the GUI
+
+    See [Permissions](/troubleshooting/permissions) for details on how privilege separation works.
+  </Accordion>
+
+  <Accordion icon="exclamation" title="ACPI calls return errors">
+    If the module loads but ACPI calls fail:
+
+    **Verify Secure Boot status:**
+    ```bash
+    mokutil --sb-state
+    ```
+
+    Some systems with Secure Boot enabled may block unsigned kernel modules. You may need to:
+    - Sign the module with your own key
+    - Disable Secure Boot in BIOS
+    - Use a pre-signed version from your distro's repos
+
+    **Check dmesg for ACPI errors:**
+    ```bash
+    sudo dmesg | grep -i acpi
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+The `acpi_call` module is powerful but potentially dangerous:
+
+- It allows arbitrary ACPI method execution
+- Malicious or incorrect calls could damage hardware
+- It requires root access to prevent abuse
+
+KVantage mitigates these risks by:
+
+1. **Privilege separation**: GUI runs as user, only backend runs as root (see `Main.kt:24`)
+2. **Limited command set**: The backend only accepts specific, safe commands
+3. **Tested ACPI calls**: All methods are tested on Lenovo hardware
+4. **Read-only operations when possible**: Status queries don't modify firmware state
+
+The backend handles the communication with `/proc/acpi/call` so the GUI never directly touches it.
+
+## Further Reading
+
+- [acpi_call GitHub repository](https://github.com/nix-community/acpi_call)
+- [ACPI specification](https://uefi.org/specifications)
+- [Linux ACPI documentation](https://www.kernel.org/doc/html/latest/firmware-guide/acpi/)
+- [Lenovo ACPI reverse engineering notes](https://www.thinkwiki.org/wiki/ACPI)

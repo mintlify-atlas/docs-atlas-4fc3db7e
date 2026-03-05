@@ -1,0 +1,525 @@
+---
+title: Backend Architecture
+description: Understanding the kvand Go daemon and ACPI interface interaction
+---
+
+## Overview
+
+The **kvand** daemon is a Go program that provides privileged access to Lenovo laptop hardware through the ACPI interface. It runs as a separate process with root privileges and communicates with the GUI via stdin/stdout.
+
+- **Language**: Go
+- **Privilege level**: Root (escalates via pkexec)
+- **Distribution**: Embedded in JAR, extracted to `/tmp` on startup
+- **Repository**: [github.com/kosail/Kvand](https://github.com/kosail/Kvand) (separate repo)
+
+<Note>
+  The backend source code in the KVantage repository (`composeApp/src/jvmMain/resources/backend/main.go`) is included for reference. The canonical source and development happens in the separate [Kvand repository](https://github.com/kosail/Kvand).
+</Note>
+
+## Daemon Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. Frontend extracts /backend/kvand from JAR                │
+│    → Writes to /tmp/kvantage_service<random>                │
+│    → Sets executable permissions (chmod +x)                 │
+└─────────────────────┬───────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Frontend launches process: ProcessBuilder(tempFile)      │
+└─────────────────────┬───────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Daemon checks if running as root                         │
+│    → If not: escalate with pkexec (password prompt)         │
+│    → If escalation fails: exit(1)                           │
+└─────────────────────┬───────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 4. Daemon sends "READY" to stdout                           │
+│    → Frontend unblocks and shows UI                         │
+└─────────────────────┬───────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 5. Command loop: Read from stdin, write to /proc/acpi/call  │
+│    → Process "get" and "set" commands                        │
+│    → Return results to stdout                               │
+└─────────────────────┬───────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 6. Shutdown: Frontend closes stdin                          │
+│    → Daemon receives EOF and exits                          │
+│    → Temp file deleted (deleteOnExit)                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Embedding in JAR Resources
+
+The compiled Go binary is placed in the JAR's resources at build time:
+
+```
+composeApp/src/jvmMain/resources/backend/kvand
+```
+
+At runtime, the frontend extracts it:
+
+```kotlin
+val embeddedBackend = this::class.java.getResourceAsStream("/backend/kvand")
+val tempFile = File.createTempFile("kvantage_service", null)
+
+embeddedBackend.use { input ->
+    FileOutputStream(tempFile).use { output ->
+        input.copyTo(output)
+    }
+}
+
+tempFile.setExecutable(true)
+```
+
+### Why This Approach?
+
+1. **Single-file distribution** - Everything ships in one JAR
+2. **No installation required** - Users don't need to manually place binaries
+3. **Version consistency** - Frontend and backend versions always match
+4. **Simplicity** - No package manager integration needed
+
+## Root Privilege Escalation
+
+The daemon checks its effective GID and escalates if necessary:
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+func main() {
+    // Check for root access
+    if os.Getegid() != 0 {
+        fmt.Printf("%s> Not running as root. Trying to escalate using pkexec...%s\n", FgYellow, Reset)
+        err := escalateWithPkexec()
+
+        if err != nil {
+            fmt.Printf("Failed to escalate privileges: %v\n", err)
+            os.Exit(1)
+        }
+    }
+
+    if os.Getegid() == 0 {
+        fmt.Printf("%s> Root privileges confirmed. Executing as root.%s\n", FgGreen, Reset)
+        fmt.Printf("%s> KvanD initialized. Launching sentinel signal to frontend:%s\n", FgBlue, Reset)
+        fmt.Println("READY")
+        os.Stdout.Sync() // Flush the buffer
+
+        // Enter command loop
+        scanner := bufio.NewScanner(os.Stdin)
+        for scanner.Scan() {
+            line := scanner.Text()
+            words := strings.Split(line, " ")
+            parseCommand(words)
+        }
+    }
+}
+```
+
+### The escalateWithPkexec Function
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+func escalateWithPkexec() error {
+    // Get the current executable path
+    exe, err := os.Executable()
+    if err != nil {
+        return fmt.Errorf("%s> Failed to get executable path: %s\n%v", FgRed, Reset, err)
+    }
+
+    // Run the same program with pkexec
+    cmd := exec.Command("pkexec", exe)
+    cmd.Stdin = os.Stdin
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+
+    return cmd.Run()
+}
+```
+
+This re-executes the daemon with `pkexec`, which:
+1. Shows a graphical password prompt (via PolicyKit)
+2. Re-runs the same binary as root
+3. Inherits stdin/stdout from the parent process
+
+### Password Prompt Timing
+
+The password is requested **once per session** when the application starts. The daemon continues running with root privileges for the entire session, eliminating repeated prompts.
+
+## Handshake Protocol
+
+The frontend **blocks** on application startup until it receives the `READY` message:
+
+**Backend sends:**
+```go
+fmt.Println("READY")
+os.Stdout.Sync() // Ensure immediate delivery
+```
+
+**Frontend waits:**
+```kotlin
+while (true) {
+    val line = reader.readLine() ?: handleBackendDeath()
+    if (line.trim() == "READY") break
+}
+```
+
+If the backend fails to start (user cancels password, binary corrupted, etc.), the frontend detects EOF and shows an error dialog.
+
+## Command Protocol
+
+The daemon accepts line-based text commands via stdin.
+
+### Command Parser
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+scanner := bufio.NewScanner(os.Stdin)
+for scanner.Scan() {
+    line := scanner.Text()
+    words := strings.Split(line, " ")
+
+    if len(words) < 2 || len(words) > 3 {
+        fmt.Printf("%sInvalid command format. Last line was ignored.%s\n", FgYellow, Reset)
+        continue
+    }
+
+    parseCommand(words)
+}
+```
+
+### Command Syntax
+
+**Get Commands** (2 tokens):
+```
+get [option]
+```
+- `get performance` → Returns `0x0`, `0x1`, or `0x2`
+- `get conservation` → Returns `0x0` (off) or `0x1` (on)
+- `get rapid` → Returns `0x0` (off) or `0x1` (on)
+
+**Set Commands** (3 tokens):
+```
+set [option] [value]
+```
+- `set performance 0` → Sets Intelligent Cooling mode, responds `OK`
+- `set conservation 1` → Enables 80% charge limit, responds `OK`
+- `set rapid 0` → Disables rapid charge, responds `OK`
+
+### Parse Implementation
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+func parseCommand(tokens []string) {
+    if tokens[0] == "get" {
+        switch tokens[1] {
+        case "performance":
+            getStatus(GetPerformanceModeStatus)
+        case "conservation":
+            getStatus(GetBattConservationStatus)
+        case "rapid":
+            getStatus(GetRapidChargeStatus)
+        default:
+            fmt.Printf("%sInvalid get option.%s\n", FgYellow, Reset)
+        }
+    }
+
+    if tokens[0] == "set" {
+        option, err := strconv.Atoi(tokens[2])
+        if err != nil || option < 0 || option > 3 {
+            fmt.Printf("%sInvalid set option.%s\n", FgYellow, Reset)
+            return
+        }
+
+        switch tokens[1] {
+        case "performance":
+            setPerformanceProfile(option)
+        case "conservation":
+            setConservation(option)
+        case "rapid":
+            setRapidCharge(option)
+        }
+    }
+}
+```
+
+## ACPI Interface Interaction
+
+### The acpi_call Kernel Module
+
+The daemon requires the `acpi_call` kernel module, which exposes `/proc/acpi/call` for reading and writing ACPI methods.
+
+**Module check**:
+```bash
+lsmod | grep acpi_call
+```
+
+**Loading the module**:
+```bash
+sudo modprobe acpi_call
+```
+
+### ACPI Command Constants
+
+Lenovo-specific ACPI paths are hardcoded in the daemon:
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+const (
+    AcpiCallPath = "/proc/acpi/call"
+
+    // GET status from all options
+    GetBattConservationStatus   = "\\_SB.PCI0.LPC0.EC0.BTSM"
+    GetRapidChargeStatus       = "\\_SB.PCI0.LPC0.EC0.QCHO"
+    GetPerformanceModeStatus   = "\\_SB.PCI0.LPC0.EC0.SPMO"
+
+    // SET Battery Conservation Mode
+    SetBattConservationOn  = "\\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x03"
+    SetBattConservationOff = "\\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x05"
+
+    // SET Rapid Charge
+    SetRapidChargeOn  = "\\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x07"
+    SetRapidChargeOff = "\\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x08"
+
+    // SET Performance Mode
+    SetPerformanceModeIntelligentCooling = "\\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x000FB001"
+    SetPerformanceModeExtremePerformance = "\\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x0012B001"
+    SetPerformanceModePowerSaving        = "\\_SB.PCI0.LPC0.EC0.VPC0.DYTC 0x0013B001"
+)
+```
+
+### ACPI Write Operation
+
+Writing to `/proc/acpi/call` invokes an ACPI method:
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+func writeAcpiCall(command string, feedback bool) {
+    // Open the file with write permissions
+    file, err := os.OpenFile(AcpiCallPath, os.O_WRONLY, 0)
+    if err != nil {
+        fmt.Printf("%sError: failed to open ACPI call interface.%s\n", FgRed, Reset)
+        return
+    }
+    defer file.Close()
+
+    // Write the command
+    _, err = file.WriteString(command)
+    if err != nil {
+        fmt.Printf("%sError: failed to write to ACPI call interface.%s\n", FgRed, Reset)
+        return
+    }
+
+    if feedback {
+        fmt.Println("OK")
+        os.Stdout.Sync()
+    }
+}
+```
+
+### ACPI Read Operation
+
+Reading from `/proc/acpi/call` retrieves the result of the last invocation:
+
+```go:composeApp/src/jvmMain/resources/backend/main.go
+func readAcpiCall() {
+    file, err := os.OpenFile(AcpiCallPath, os.O_RDONLY, 0)
+    if err != nil {
+        fmt.Printf("%sError: failed to open ACPI call interface.%s\n", FgRed, Reset)
+    }
+    defer file.Close()
+
+    scanner := bufio.NewScanner(file)
+    if !scanner.Scan() {
+        fmt.Printf("%sError: No data returned from ACPI.%s\n", FgRed, Reset)
+        return
+    }
+
+    // Sanitize string (remove null terminators and whitespace)
+    fmt.Println(strings.Trim(scanner.Text(), "\x00\n "))
+    os.Stdout.Sync()
+}
+```
+
+### Why Feedback Parameter?
+
+From the code comments:
+
+```go
+/*
+  When we want to write a setting to the ACPI interface, we don't get any feedback.
+  So, the GUI doesn't know the result of the operation and hangs waiting for something to read.
+  That's why we have a feedback parameter.
+  
+  Example:
+    > set performance 0
+    OK
+
+  When we just want to check the status (the current value) of a setting, we DO care for what ACPI returns.
+  We want to print that returned value, so the GUI catches it up and updates itself accordingly.
+  The GUI expects only 1 value, but if we always print OK at writeAcpiCall operations, this will be printed:
+    > get conservation
+    OK
+    0x1
+
+  The GUI will catch "OK" instead of the actual value, and everything messes up from the frontend side.
+
+  TL;DR: We don't need feedback when checking values, just when writing.
+*/
+```
+
+### Get vs Set Operations
+
+**Get Operation** (query hardware state):
+```go
+func getStatus(command string) {
+    writeAcpiCall(command, false) // Don't print OK
+    readAcpiCall()                // Print the actual value
+}
+```
+
+**Set Operation** (change hardware state):
+```go
+func setConservation(mode int) {
+    if mode == 0 {
+        writeAcpiCall(SetBattConservationOff, true) // Print OK as confirmation
+    }
+    if mode == 1 {
+        writeAcpiCall(SetBattConservationOn, true)  // Print OK as confirmation
+    }
+}
+```
+
+## ACPI Timing Characteristics
+
+From the code comments:
+
+```go
+// ACPI is not as fast as I thought. When I need to check the current setting of a device,
+// ACPI is blazing fast from when I write the request to when the response is available.
+// Both Write and Read operations can be done sequentially.
+//
+// However, when doing writes to change the status or behavior of the hardware... well, now here is the issue.
+// It takes around 1 second from when I write the new setting to the call interface,
+// to when the setting is set and the call interface returns the new value as a confirmation.
+//
+// Due to this limitation, it is not possible to perform a read call right away after a setting has been written.
+// Instead, I will have the frontend manually call a read operation from the backend after it has requested a write operation.
+```
+
+**Implication**: The frontend must wait for the `OK` response before issuing another command. The ~1 second delay is handled naturally by the synchronous communication protocol.
+
+## Security Considerations
+
+### Root Requirement Justification
+
+The `/proc/acpi/call` interface requires root access because:
+1. **Direct hardware access** - ACPI methods can control physical hardware
+2. **System stability** - Malformed ACPI calls can crash the system
+3. **Security boundary** - Prevents unprivileged users from changing power settings
+
+### Isolation Strategy
+
+KVantage minimizes risk through:
+
+1. **Privilege separation** - Only the small Go daemon runs as root
+2. **Limited attack surface** - Backend has no network access, no file system access (except `/proc/acpi/call`)
+3. **Simple protocol** - No complex parsing, no code execution
+4. **Hardcoded commands** - ACPI paths are constants, not user-controlled
+5. **Short-lived** - Daemon only runs while GUI is open
+
+### Input Validation
+
+The daemon validates all input:
+
+```go
+if len(words) < 2 || len(words) > 3 {
+    fmt.Printf("%sInvalid command format.%s\n", FgYellow, Reset)
+    continue
+}
+
+option, err := strconv.Atoi(tokens[2])
+if err != nil || option < 0 || option > 3 {
+    fmt.Printf("%sInvalid set option.%s\n", FgYellow, Reset)
+    return
+}
+```
+
+No arbitrary strings are passed to the ACPI interface.
+
+## Standalone Usage
+
+While designed to be embedded, the daemon can be run standalone:
+
+```bash
+# Show help
+./kvand -h
+
+# Interactive mode (prompts for pkexec)
+./kvand
+READY
+get performance
+0x1
+set conservation 1
+OK
+```
+
+Press Ctrl+D (EOF) to exit.
+
+## Error Handling
+
+The daemon uses colored output for diagnostics:
+
+```go
+const (
+    Reset    = "\033[0m"
+    FgCyan   = "\033[36m"
+    FgGreen  = "\033[32m"
+    FgYellow = "\033[33m"
+    FgRed    = "\033[31m"
+    FgBlue   = "\033[34m"
+)
+
+fmt.Printf("%sError: failed to open ACPI call interface.%s\n", FgRed, Reset)
+```
+
+Errors are written to stdout (captured by frontend logger) and stderr.
+
+## Building the Backend
+
+To compile the Go daemon:
+
+```bash
+cd composeApp/src/jvmMain/resources/backend
+go build -o kvand main.go
+```
+
+For release builds, use:
+
+```bash
+GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o kvand main.go
+```
+
+Flags:
+- `-s` - Omit symbol table
+- `-w` - Omit DWARF debug info
+- Result: Smaller binary size
+
+## External Development
+
+For contributors working on the backend:
+
+1. **Clone the Kvand repository**: [github.com/kosail/Kvand](https://github.com/kosail/Kvand)
+2. Make changes and test standalone
+3. Copy the compiled binary to `composeApp/src/jvmMain/resources/backend/kvand`
+4. Rebuild the KVantage JAR
+
+This workflow keeps the backend development separate while maintaining embedding in the main application.
+
+## Platform Compatibility
+
+The daemon is Linux-specific due to:
+- `/proc/acpi/call` dependency (Linux kernel module)
+- `pkexec` for privilege escalation (PolicyKit)
+- Lenovo ACPI paths (hardware-specific)
+
+**Supported distributions**: Any Linux distro with:
+- `acpi_call` kernel module available
+- PolicyKit (pkexec) installed
+- Lenovo laptop with compatible ACPI table

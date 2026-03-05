@@ -1,0 +1,140 @@
+---
+title: Performance Profiles
+description: Control your laptop's performance and power balance with three distinct performance modes
+---
+
+## Overview
+
+KVantage allows you to switch between three performance profiles that control how your Lenovo laptop balances performance, cooling, and power consumption. These profiles directly interact with your laptop's ACPI firmware to adjust CPU power limits, fan behavior, and thermal management.
+
+## Available Profiles
+
+<CardGroup cols={3}>
+  <Card title="Performance" icon="bolt">
+    Maximum performance with aggressive cooling. Best for demanding workloads.
+  </Card>
+  <Card title="Intelligent Cooling" icon="air">
+    Balanced mode that adapts to your workload. Default setting for most users.
+  </Card>
+  <Card title="Power Saving" icon="leaf">
+    Extends battery life by reducing power consumption and heat generation.
+  </Card>
+</CardGroup>
+
+## Profile Details
+
+### Performance Mode (Extreme Performance)
+
+- **Icon**: Bolt (⚡)
+- **Mode Value**: `0x0` (or `1` in daemon commands)
+- **ACPI Command**: `0x0012B001`
+- **Best For**: Gaming, video rendering, compilation, or any CPU/GPU intensive tasks
+- **Behavior**: Allows maximum CPU and GPU power draw, runs fans at higher speeds to maintain lower temperatures
+
+<Warning>
+This mode will drain your battery faster and generate more heat. Only use when plugged in or when maximum performance is required.
+</Warning>
+
+### Intelligent Cooling (Balanced)
+
+- **Icon**: Air (🌀)
+- **Mode Value**: `0x1` (or `0` in daemon commands)
+- **ACPI Command**: `0x000FB001`
+- **Best For**: General productivity, web browsing, development, mixed workloads
+- **Behavior**: Automatically adjusts power and cooling based on current load. Provides good performance while managing heat and battery life
+
+<Info>
+This is the recommended mode for most users. It provides excellent performance when needed while maintaining reasonable battery life and thermal comfort.
+</Info>
+
+### Power Saving
+
+- **Icon**: Leaf (🍃)
+- **Mode Value**: `0x2` (or `2` in daemon commands)
+- **ACPI Command**: `0x0013B001`
+- **Best For**: Light tasks, extending battery life, reducing fan noise
+- **Behavior**: Limits CPU power consumption, reduces turbo boost frequency, runs fans at minimum speeds
+
+<Tip>
+Combine Power Saving mode with Battery Conservation to maximize your laptop's battery lifespan and runtime.
+</Tip>
+
+## How to Switch Profiles
+
+1. Open KVantage from your application menu or system tray
+2. Locate the **Performance Profile** section at the top of the main window
+3. Click on one of the three segmented buttons to switch profiles:
+   - **Performance** (left button with bolt icon)
+   - **Intelligent cooling** (middle button with air icon)
+   - **Power saving** (right button with leaf icon)
+4. The change takes effect immediately
+
+The selected profile is highlighted with a colored background, and the UI shows which mode is currently active.
+
+## Technical Details
+
+### Daemon Protocol
+
+KVantage communicates with the system daemon (`kvand`) to read and write performance settings.
+
+**Get Current Profile:**
+```bash
+get performance
+```
+
+Returns one of:
+- `0x0` - Extreme Performance
+- `0x1` - Intelligent Cooling (Balanced)
+- `0x2` - Power Saving
+
+**Set Profile:**
+```bash
+set performance <mode>
+```
+
+Where `<mode>` is:
+- `0` - Intelligent Cooling (Balanced)
+- `1` - Extreme Performance  
+- `2` - Power Saving
+
+<Note>
+Notice the mapping difference: the daemon's `set` command uses different numeric values than the ACPI return values from `get`. This is handled automatically by the KVantage UI.
+</Note>
+
+### Implementation Reference
+
+The performance profile UI is implemented in:
+```
+composeApp/src/jvmMain/kotlin/com/korealm/kvantage/ui/mainUI/PowerProfiler.kt
+```
+
+Key implementation details:
+- The UI uses segmented buttons with icons and labels
+- Settings are fetched on component initialization
+- Changes are applied immediately via the daemon
+- A loading indicator displays while fetching the current state
+
+## Persistence
+
+Your selected performance profile is stored in KVantage's settings and will be restored when you restart the application. However, if your laptop reboots, you may need to reapply your preferred profile as BIOS/firmware defaults may override it.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Profile doesn't change or reverts immediately">
+    This may indicate that your laptop's ACPI firmware doesn't support these specific commands, or the `acpi_call` kernel module isn't loaded. Check that the module is loaded with `lsmod | grep acpi_call`.
+  </Accordion>
+  
+  <Accordion title="No performance difference between modes">
+    Some laptop models may have limited support for performance profiles, or your laptop's firmware may implement these modes differently. The behavior varies by model and BIOS version.
+  </Accordion>
+  
+  <Accordion title="Settings not persisting after reboot">
+    KVantage saves your preference, but the BIOS may reset to defaults on boot. Consider adding KVantage to your startup applications to automatically reapply your preferred profile.
+  </Accordion>
+</AccordionGroup>
+
+## Related Features
+
+- [Battery Conservation](/features/battery-conservation) - Limit charge to 80% for battery longevity
+- [Rapid Charge](/features/rapid-charge) - Enable faster charging when needed

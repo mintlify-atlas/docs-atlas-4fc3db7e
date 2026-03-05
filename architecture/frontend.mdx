@@ -1,0 +1,525 @@
+---
+title: Frontend Architecture
+description: Deep dive into the Kotlin Compose Desktop GUI implementation
+---
+
+## Technology Stack
+
+- **Framework**: Compose Multiplatform for Desktop
+- **Language**: Kotlin (JVM target)
+- **Build tool**: Gradle with Kotlin DSL
+- **UI paradigm**: Declarative, reactive composition
+- **Concurrency**: Kotlin Coroutines
+
+## Project Structure
+
+```
+composeApp/src/jvmMain/kotlin/com/korealm/kvantage/
+├── Main.kt                    # Application entry point
+├── ui/
+│   ├── App.kt                 # Root composable
+│   ├── mainUI/
+│   │   ├── PowerProfiler.kt   # Performance mode selector
+│   │   ├── BatteryThreshold.kt # Conservation mode toggle
+│   │   ├── RapidCharge.kt     # Rapid charge toggle
+│   │   └── BatteryLife.kt     # Battery status display
+│   ├── settings/
+│   │   ├── SettingsDialog.kt  # Settings screen
+│   │   └── ThemeSelector.kt   # Theme picker
+│   └── theme/
+│       ├── AppTheme.kt        # Theme definitions
+│       ├── MaterialTheme.kt
+│       ├── DraculaTheme.kt
+│       ├── KanagawaTheme.kt
+│       └── WhisperingSea.kt
+├── state/
+│   ├── KvandClient.kt         # Backend communication singleton
+│   ├── ThemeState.kt          # Theme management
+│   └── BatteryLifeReader.kt   # Battery info reader
+├── utils/
+│   ├── SettingsManager.kt     # Persistent settings
+│   ├── AppInstaller.kt        # First-run installer
+│   ├── AppLogger.kt           # Logging utility
+│   └── PathsStore.kt          # File path management
+└── models/
+    ├── Settings.kt            # Settings data class
+    └── ThemeType.kt           # Theme enum
+```
+
+## Application Entry Point
+
+The `Main.kt` file is the application's starting point and implements critical security checks:
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/Main.kt
+fun main() = application {
+    // Security check: Prevent running GUI as root
+    if (isRunningAsRoot()) forbidStartAsRoot(::exitApplication)
+
+    val icon = painterResource(Res.drawable.favicon)
+    var isInstallDialogOpen by remember { mutableStateOf(AppInstaller.isFirstRun()) }
+
+    if (isInstallDialogOpen) {
+        // Show installer on first run
+        Window(
+            onCloseRequest = ::exitApplication,
+            title = "KVantage",
+            icon = icon,
+            resizable = false,
+            state = WindowState( size = DpSize(530.dp, 360.dp) )
+        ) {
+            InstallerDialog(
+                onDismissRequest = { isInstallDialogOpen = false },
+            )
+        }
+    } else {
+        // Launch main application with daemon
+        val kvand = remember { KvandClient.getInstance() }
+
+        Window(
+            onCloseRequest = ::exitApplication,
+            title = "KVantage",
+            icon = icon,
+            resizable = false,
+            state = WindowState( size = DpSize(545.dp, 850.dp) )
+        ) {
+            App(kvand)
+        }
+    }
+}
+```
+
+### Root Detection
+
+The application refuses to start if running as root:
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/Main.kt
+fun isRunningAsRoot(): Boolean {
+    return System.getProperty("user.name") == "root" ||
+            System.getenv("USER") == "root" ||
+            System.getenv("SUDO_UID") != null
+}
+
+fun forbidStartAsRoot(exitApp: () -> Unit) {
+    javax.swing.JOptionPane.showMessageDialog(
+        null,
+        "This app needs root access to work, but it manages it to escalate it internally and securely, just for a small portion of it (the backend).\nThe app GUI (the graphical interface) should NEVER be started as root for obvious security reasons.",
+        "Critical Error: App must never be started as root",
+        javax.swing.JOptionPane.ERROR_MESSAGE
+    )
+    exitApp()
+}
+```
+
+## KvandClient: Backend Communication
+
+The `KvandClient` is a **singleton** that manages the lifecycle and communication with the backend daemon.
+
+### Daemon Launch Process
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/state/KvandClient.kt
+fun getInstance(): KvandClient {
+    if (instance == null) {
+        // 1. Extract embedded binary from JAR
+        val embeddedBackend = this::class.java.getResourceAsStream("/backend/kvand")
+            ?: throw IOException("Could not find embedded backend binary!")
+        val tempFile = File.createTempFile("kvantage_service", null)
+        tempFile.deleteOnExit()
+
+        // 2. Copy to temporary file
+        embeddedBackend.use { input ->
+            FileOutputStream(tempFile).use { output ->
+                input.copyTo(output)
+            }
+        }
+
+        // 3. Make executable
+        tempFile.setExecutable(true)
+
+        // 4. Launch process
+        val process = ProcessBuilder(tempFile.absolutePath)
+            .redirectErrorStream(true)
+            .start()
+
+        val writer = BufferedWriter(OutputStreamWriter(process.outputStream))
+        val reader = BufferedReader(InputStreamReader(process.inputStream))
+
+        // 5. Wait for READY handshake
+        while (true) {
+            val line = reader.readLine() ?: handleBackendDeath()
+            if (line.trim() == "READY") break
+        }
+
+        instance = KvandClient(process, writer, reader)
+        
+        // 6. Register shutdown hook
+        Runtime.getRuntime().addShutdownHook(Thread { process.destroy() })
+    }
+    return instance!!
+}
+```
+
+### Why Extract to /tmp?
+
+JVM limitation explained in the code comments:
+
+> There is a limitation of the JVM in which we CANNOT run executables from inside JAR files, so we have to copy the backend executable into /tmp give it +x permissions and then run it.
+
+### Synchronized Command Sending
+
+All communication is synchronized to prevent race conditions:
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/state/KvandClient.kt
+@Synchronized
+fun sendCommand(command: String): String {
+    writer.write(command)
+    writer.newLine()
+    writer.flush()
+
+    val response = reader.readLine()
+    AppLogger.debug("KvandClient", "Sent command: $command")
+    AppLogger.debug("KvandClient", "Received response: $response")
+
+    return response ?: "ERROR"
+}
+```
+
+The `@Synchronized` annotation ensures thread-safe access when multiple UI components send commands concurrently.
+
+### Error Handling
+
+If the backend fails to start (e.g., user cancels password prompt):
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/state/KvandClient.kt
+private fun handleBackendDeath(): Nothing {
+    javax.swing.JOptionPane.showMessageDialog(
+        null,
+        "Failed to initialize the backend service.\nRoot permissions are required to run this application.",
+        "Critical Error",
+        javax.swing.JOptionPane.ERROR_MESSAGE
+    )
+    AppLogger.error("KvandClient", "Backend service failed to start.")
+    exitProcess(1)
+}
+```
+
+## UI Architecture
+
+### App Composable
+
+The root `App` composable manages application-wide state:
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/ui/App.kt
+@Composable
+fun App(kvand: KvandClient) {
+    val savedSettings = remember { mutableStateOf(SettingsManager.loadSettings()) }
+    val themeState = rememberAppThemeState(savedSettings.value.isDarkMode)
+    val batteryLifeState = rememberBatteryLifeState(savedSettings.value.batteryName)
+    var isSettingsOpen by remember { mutableStateOf(false) }
+
+    AppTheme(
+        themeType = themeState.currentTheme,
+        darkTheme = themeState.isDarkTheme
+    ) {
+        // Background (animated or solid)
+        if (savedSettings.value.isAnimatedBackground) {
+            AnimatedColorfulBackground(
+                modifier = Modifier.fillMaxSize().blur(3.dp)
+            )
+        }
+
+        // Main surface with UI components
+        Surface(...) {
+            Column(...) {
+                // Logo and settings button
+                // PowerProfilerSection
+                // BatteryThreshold
+                // RapidCharge
+                // BatteryLife (optional)
+            }
+        }
+
+        // Settings overlay
+        if (isSettingsOpen) {
+            SettingsScreen(...)
+        }
+    }
+}
+```
+
+### PowerProfiler Component
+
+Example of a hardware control component with coroutines:
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/ui/mainUI/PowerProfiler.kt
+@Composable
+fun PowerProfilerSection(kvand: KvandClient, modifier: Modifier = Modifier) {
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    var isInitialized by remember { mutableStateOf(false) }
+    var pendingUpdate by remember { mutableStateOf<Boolean?>(null) }
+
+    // Initial state loading
+    LaunchedEffect(Unit) {
+        val result = withContext(Dispatchers.IO) {
+            kvand.sendCommand("get performance")
+        }
+
+        val sanitizedResult = result.replace("\u0000", "").trim()
+        selectedIndex = when (sanitizedResult) {
+            "0x0" -> 1 // Extreme Performance
+            "0x1" -> 0 // Intelligent Cooling
+            else -> 2  // Power Saving
+        }
+
+        isInitialized = true
+    }
+
+    // UI rendering
+    Column(modifier = modifier) {
+        Text(text = stringResource(Res.string.performance_profile), ...)
+
+        if (isInitialized) {
+            SingleChoiceSegmentedButtonRow {
+                val options = listOf(
+                    stringResource(Res.string.power_profile_performance),
+                    stringResource(Res.string.power_profile_balanced),
+                    stringResource(Res.string.power_profile_powersave)
+                )
+
+                options.forEachIndexed { index, label ->
+                    SegmentedButton(
+                        onClick = {
+                            selectedIndex = index
+                            pendingUpdate = true
+                        },
+                        selected = selectedIndex == index,
+                        ...
+                    ) {
+                        // Button content
+                    }
+                }
+            }
+        } else {
+            CircularProgressIndicator() // Loading state
+        }
+    }
+
+    // Handle user changes
+    LaunchedEffect(pendingUpdate) {
+        if (pendingUpdate != null && isInitialized) {
+            withContext(Dispatchers.IO) {
+                val mode = when (selectedIndex) {
+                    0 -> 1 // Balanced
+                    1 -> 0 // Extreme
+                    else -> 2 // Power Save
+                }
+                kvand.sendCommand("set performance $mode")
+            }
+            pendingUpdate = null
+        }
+    }
+}
+```
+
+### Key Patterns
+
+1. **LaunchedEffect for initialization** - Fetches current hardware state on component mount
+2. **Dispatchers.IO for blocking operations** - Moves network/IO calls off the UI thread
+3. **Loading states** - Shows `CircularProgressIndicator` until initialization completes
+4. **Separate effects for reads and writes** - One `LaunchedEffect` for initial read, another watches for user changes
+
+## State Management
+
+KVantage uses Compose's built-in state management:
+
+### Remember and MutableState
+
+```kotlin
+var selectedIndex by remember { mutableIntStateOf(0) }
+var isChecked by remember { mutableStateOf(false) }
+```
+
+### Persistent Settings
+
+Settings are saved to disk using `SettingsManager`:
+
+```kotlin
+val savedSettings = remember { mutableStateOf(SettingsManager.loadSettings()) }
+
+// When settings change:
+onThemeToggleAction = {
+    themeState.toggleTheme()
+    val dark = savedSettings.value.isDarkMode
+    savedSettings.value = savedSettings.value.copy(isDarkMode = !dark)
+    saveSettings(savedSettings.value)
+}
+```
+
+Settings are serialized to JSON and stored in the user's config directory.
+
+## Coroutines and Concurrency
+
+### Why Dispatchers.IO?
+
+All `KvandClient.sendCommand()` calls are wrapped in `withContext(Dispatchers.IO)`:
+
+```kotlin
+val result = withContext(Dispatchers.IO) {
+    kvand.sendCommand("get conservation")
+}
+```
+
+This prevents blocking the UI thread during:
+- IPC communication with backend process
+- Reading/writing to stdin/stdout
+- Waiting for ACPI operations
+
+### LaunchedEffect for Side Effects
+
+Compose uses `LaunchedEffect` to trigger coroutines in response to state changes:
+
+```kotlin
+LaunchedEffect(pendingUpdate) {
+    if (pendingUpdate != null && isInitialized) {
+        withContext(Dispatchers.IO) {
+            kvand.sendCommand("set conservation ${if (pendingUpdate == true) 1 else 0}")
+        }
+        pendingUpdate = null
+    }
+}
+```
+
+This effect runs whenever `pendingUpdate` changes, sending the command and resetting the trigger.
+
+## Theme System
+
+KVantage includes multiple built-in themes:
+
+- Material (Light/Dark)
+- Dracula
+- Kanagawa
+- Whispering Sea
+
+### Theme State Management
+
+```kotlin
+val themeState = rememberAppThemeState(savedSettings.value.isDarkMode)
+
+AppTheme(
+    themeType = themeState.currentTheme,
+    darkTheme = themeState.isDarkTheme
+) {
+    // UI content
+}
+```
+
+### Animated Background
+
+Optional animated gradient background:
+
+```kotlin
+if (savedSettings.value.isAnimatedBackground) {
+    AnimatedColorfulBackground(
+        modifier = Modifier.fillMaxSize().blur(3.dp)
+    )
+}
+```
+
+The surface color adjusts transparency when animated background is enabled:
+
+```kotlin
+color = if (savedSettings.value.isAnimatedBackground) {
+    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+} else {
+    MaterialTheme.colorScheme.surface
+}
+```
+
+## Build Configuration
+
+The project uses Gradle with Kotlin DSL:
+
+```kotlin:composeApp/build.gradle.kts
+kotlin {
+    jvm()
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
+            implementation(libs.compose.material3)
+            implementation(libs.compose.ui)
+            implementation(libs.kotlinx.json.serializer)
+        }
+        jvmMain.dependencies {
+            implementation(compose.desktop.currentOs)
+            implementation(libs.kotlinx.coroutinesSwing)
+        }
+    }
+}
+
+compose.desktop {
+    application {
+        mainClass = "com.korealm.kvantage.MainKt"
+
+        nativeDistributions {
+            targetFormats(TargetFormat.Deb)
+            packageName = "com.korealm.kvantage"
+            packageVersion = "2.1.0"
+        }
+    }
+}
+```
+
+### Key Dependencies
+
+- **compose.desktop.currentOs** - Platform-specific Compose Desktop runtime
+- **kotlinx.coroutinesSwing** - Swing integration for coroutines (used for dialogs)
+- **kotlinx.json.serializer** - JSON serialization for settings
+
+## First-Run Experience
+
+The application includes an embedded installer that runs on first launch:
+
+```kotlin
+var isInstallDialogOpen by remember { mutableStateOf(AppInstaller.isFirstRun()) }
+
+if (isInstallDialogOpen) {
+    Window(...) {
+        InstallerDialog(
+            onDismissRequest = { isInstallDialogOpen = false },
+        )
+    }
+}
+```
+
+The installer copies the JAR to the user's local bin folder (`~/.local/bin/`) and optionally creates desktop entries.
+
+## Logging
+
+The `AppLogger` utility provides structured logging:
+
+```kotlin
+AppLogger.debug("KvandClient", "Sent command: $command")
+AppLogger.debug("KvandClient", "Received response: $response")
+AppLogger.error("KvandClient", "Backend service failed to start.")
+```
+
+Logs are written to files in the application data directory for debugging.
+
+## Hardware Quirks
+
+The code includes comments about hardware behavior:
+
+```kotlin:composeApp/src/jvmMain/kotlin/com/korealm/kvantage/ui/App.kt
+/* There is a limitation that I don't know if it comes from hardware or software.
+   You can have both rapid charge and battery conservation options enabled at the same time.
+   However, if you have batt conservation on and rapid charge off, and you turn on rapid charge,
+   it automatically deactivates batt conservation.
+   
+   The following state is to keep track of that eccentric event and reflect it on the GUI
+   to avoid un-sync of the GUI with the actual models on hardware.
+*/
+var isRapidChargeToggleConservation by remember { mutableStateOf(false) }
+```
+
+This demonstrates the real-world complexity of hardware interaction and the frontend's role in maintaining UI consistency.

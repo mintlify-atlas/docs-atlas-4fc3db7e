@@ -1,97 +1,232 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "KVantage Documentation"
+description: "Minimal control center for Lenovo laptops on Linux"
+mode: "custom"
 ---
 
-## Setting up
+<div className="relative bg-gradient-to-br from-[#1e40af] via-[#2563eb] to-[#60a5fa] dark:from-[#0f1117] dark:via-[#1a1d27] dark:to-[#1e40af] py-20 overflow-hidden">
+  <div className="absolute inset-0 bg-black/20 dark:bg-black/40"></div>
+  <div className="relative max-w-6xl mx-auto px-6 lg:px-8">
+    <div className="flex flex-col lg:flex-row lg:grid-cols-12 gap-12 items-center">
+      <div className="flex-1 lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+          KVantage Documentation
+        </h1>
+        <p className="text-lg sm:text-xl text-white/90 max-w-2xl mb-8">
+          Take control of your Lenovo laptop on Linux with a sleek, minimal desktop application. Manage performance profiles, battery conservation, rapid charging, and more—all with an elegant Material UI design.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a 
+            href="/quickstart" 
+            className="inline-flex items-center px-6 py-3 bg-white text-[#2563eb] font-semibold rounded-lg hover:bg-white/90 transition-colors no-underline"
+          >
+            Get Started
+          </a>
+          <a 
+            href="/features" 
+            className="inline-flex items-center px-6 py-3 border-2 border-white/30 bg-white/10 text-white font-semibold rounded-lg hover:bg-white/20 hover:border-white/50 transition-colors no-underline"
+          >
+            Explore Features
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
+      Get Started in Minutes
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Follow these steps to install and run KVantage on your Lenovo laptop.
+    </p>
+  </div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+  <Steps>
+    <Step title="Download the latest release">
+      Download the latest JAR file from the [GitHub releases page](https://github.com/kosail/KVantage/releases) or use the direct link for the latest version.
+      
+      ```bash
+      wget https://github.com/kosail/KVantage/releases/download/Release_v2.1.0/com.korealm.kvantage-linux-x64-2.1.0-release.jar
+      ```
+    </Step>
+    
+    <Step title="Ensure Java Runtime is installed">
+      KVantage requires Java to run. Install the Java Runtime Environment if you haven't already.
+      
+      ```bash
+      # Debian/Ubuntu
+      sudo apt install default-jre
+      
+      # Fedora
+      sudo dnf install java-latest-openjdk
+      
+      # Arch Linux
+      sudo pacman -S jre-openjdk
+      ```
+    </Step>
+    
+    <Step title="Launch KVantage">
+      Run the application with Java. The embedded installer will guide you through setup on first launch.
+      
+      ```bash
+      java -jar com.korealm.kvantage-linux-x64-2.1.0-release.jar
+      ```
+      
+      <Note>
+        KVantage requires root access to interact with ACPI interfaces, but the GUI itself should **never** be started as root. The application manages privilege escalation internally and securely through the backend daemon.
+      </Note>
+    </Step>
+  </Steps>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
+      Explore by Topic
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Learn about the core features and architecture of KVantage.
+    </p>
+  </div>
 
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
+  <CardGroup cols={2}>
     <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+      title="Performance Profiles"
+      icon="bolt"
+      href="/features/performance-profiles"
+    >
+      Switch between Power Saving, Intelligent Cooling, and Extreme Performance modes to optimize your laptop's behavior.
+    </Card>
+    <Card
+      title="Battery Conservation"
+      icon="battery-half"
+      href="/features/battery-conservation"
+    >
+      Limit battery charge to 80% to extend battery lifespan and health over time.
+    </Card>
+    <Card
+      title="Rapid Charge"
+      icon="bolt-lightning"
+      href="/features/rapid-charge"
+    >
+      Enable or disable rapid charging to balance charging speed with battery health.
+    </Card>
+    <Card
+      title="Themes"
+      icon="palette"
+      href="/features/themes"
+    >
+      Choose from multiple beautiful dark and light themes including Whispering Sea, Material, Kanagawa, and Dracula.
+    </Card>
+    <Card
+      title="Architecture Overview"
+      icon="sitemap"
+      href="/architecture/overview"
+    >
+      Understand how KVantage's frontend and backend work together to control your laptop.
+    </Card>
+    <Card
+      title="Troubleshooting"
+      icon="wrench"
+      href="/troubleshooting/common-issues"
+    >
+      Resolve common issues with ACPI interfaces, permissions, and compatibility.
+    </Card>
+  </CardGroup>
+</div>
 
-## Create beautiful pages
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
+      Key Features
+    </h2>
+  </div>
 
-Everything you need to create world-class documentation.
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="p-6 bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a] rounded-xl">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 bg-[#2563eb]/10 dark:bg-[#2563eb]/20 rounded-lg flex items-center justify-center">
+          <span className="text-[#2563eb] text-xl">⚡</span>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            Performance Management
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Toggle between power saving, extreme performance, and intelligent cooling profiles.
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <div className="p-6 bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a] rounded-xl">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 bg-[#2563eb]/10 dark:bg-[#2563eb]/20 rounded-lg flex items-center justify-center">
+          <span className="text-[#2563eb] text-xl">🔋</span>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            Battery Health
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Protect your battery with conservation mode and monitor remaining battery life.
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <div className="p-6 bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a] rounded-xl">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 bg-[#2563eb]/10 dark:bg-[#2563eb]/20 rounded-lg flex items-center justify-center">
+          <span className="text-[#2563eb] text-xl">🎨</span>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            Beautiful Themes
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Choose from multiple carefully crafted dark and light themes with Material UI aesthetics.
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <div className="p-6 bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a] rounded-xl">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 bg-[#2563eb]/10 dark:bg-[#2563eb]/20 rounded-lg flex items-center justify-center">
+          <span className="text-[#2563eb] text-xl">🌍</span>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            Multi-Language Support
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Available in 8 languages with automatic locale detection based on your system settings.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="p-8 bg-gradient-to-br from-[#2563eb] to-[#1e40af] rounded-2xl">
+    <div className="max-w-2xl">
+      <h2 className="text-3xl font-bold text-white mb-4">
+        Ready to take control of your Lenovo laptop?
+      </h2>
+      <p className="text-lg text-white/90 mb-6">
+        Get started with KVantage in minutes and experience a cleaner, more powerful way to manage your laptop on Linux.
+      </p>
+      <a 
+        href="/installation" 
+        className="inline-flex items-center px-6 py-3 bg-white text-[#2563eb] font-semibold rounded-lg hover:bg-white/90 transition-colors no-underline"
+      >
+        Install Now
+      </a>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,267 @@
+---
+title: "Common Issues"
+description: "Solutions to frequently encountered problems with KVantage"
+icon: "circle-exclamation"
+---
+
+This page covers the most common issues users encounter when running KVantage and how to resolve them.
+
+## Backend Service Errors
+
+<AccordionGroup>
+  <Accordion icon="server" title="Backend service failed to start">
+    This error typically occurs when KVantage cannot initialize the backend daemon (kvand) that handles ACPI communication.
+
+    **Common causes:**
+    - Root permissions were denied when prompted
+    - The password prompt was cancelled
+    - The backend binary failed to extract or execute
+
+    **Solutions:**
+
+    1. **Restart the application and provide your password:**
+       ```bash
+       java -jar kvantage.jar
+       ```
+       When prompted, enter your sudo password to allow the backend service to start.
+
+    2. **Check if you have sudo privileges:**
+       ```bash
+       sudo -v
+       ```
+       If this fails, your user account may not have sudo access. Contact your system administrator.
+
+    3. **Check system logs for more details:**
+       ```bash
+       journalctl --user -xe | grep kvantage
+       ```
+
+    <Warning>
+      The backend requires root privileges to access `/proc/acpi/call`. Without these permissions, KVantage cannot function.
+    </Warning>
+  </Accordion>
+
+  <Accordion icon="ban" title="App must never be started as root">
+    KVantage will refuse to start if launched directly as the root user or with sudo.
+
+    **Why this happens:**
+    KVantage implements security-conscious privilege separation. Only the backend daemon runs with elevated privileges, while the GUI must run as your regular user.
+
+    **Solution:**
+
+    **Don't** run KVantage like this:
+    ```bash
+    sudo java -jar kvantage.jar  # ❌ Wrong
+    ```
+
+    **Do** run it as your regular user:
+    ```bash
+    java -jar kvantage.jar  # ✓ Correct
+    ```
+
+    The application will prompt for your password internally when needed to start the backend service.
+
+    <Note>
+      This security check is performed in `Main.kt:24` using the `isRunningAsRoot()` function, which checks `user.name`, `USER`, and `SUDO_UID` environment variables.
+    </Note>
+  </Accordion>
+
+  <Accordion icon="key" title="Root permission issues">
+    If you're repeatedly prompted for passwords or the backend fails to maintain elevated privileges:
+
+    **Check if polkit is configured correctly:**
+    ```bash
+    systemctl status polkit
+    ```
+
+    **Verify your user is in the wheel/sudo group:**
+    ```bash
+    groups $USER
+    ```
+
+    You should see `wheel` or `sudo` in the output. If not, add your user to the appropriate group:
+    ```bash
+    # For Fedora/RHEL/Arch
+    sudo usermod -aG wheel $USER
+
+    # For Ubuntu/Debian
+    sudo usermod -aG sudo $USER
+    ```
+
+    Log out and back in for group changes to take effect.
+  </Accordion>
+</AccordionGroup>
+
+## Java Runtime Issues
+
+<AccordionGroup>
+  <Accordion icon="coffee" title="Java not found or wrong version">
+    KVantage is a Java application that requires a Java Runtime Environment (JRE) to run.
+
+    **Check if Java is installed:**
+    ```bash
+    java -version
+    ```
+
+    **If Java is not found, install it:**
+
+    <CodeGroup>
+    ```bash Arch Linux
+    sudo pacman -S jre-openjdk
+    ```
+
+    ```bash Fedora
+    sudo dnf install java-latest-openjdk
+    ```
+
+    ```bash Ubuntu/Debian
+    sudo apt install default-jre
+    ```
+
+    ```bash openSUSE
+    sudo zypper install java-openjdk
+    ```
+    </CodeGroup>
+
+    **Verify Java is in your PATH:**
+    ```bash
+    which java
+    ```
+
+    If Java is installed but not found, you may need to add it to your PATH:
+    ```bash
+    export PATH="/usr/lib/jvm/default/bin:$PATH"
+    ```
+
+    Add this line to your `~/.bashrc` or `~/.zshrc` to make it permanent.
+  </Accordion>
+
+  <Accordion icon="file-zipper" title="Cannot execute JAR file">
+    If double-clicking the JAR file doesn't work:
+
+    **Run from the terminal:**
+    ```bash
+    java -jar /path/to/kvantage.jar
+    ```
+
+    **Make the JAR executable (optional):**
+    ```bash
+    chmod +x kvantage.jar
+    ./kvantage.jar
+    ```
+
+    **Set default JAR file association:**
+    Most file managers allow you to set Java as the default application for `.jar` files. Right-click the file, select **Properties** or **Open With**, and choose your Java runtime.
+  </Accordion>
+</AccordionGroup>
+
+## Hardware Compatibility
+
+<AccordionGroup>
+  <Accordion icon="laptop" title="ACPI interface not available">
+    This error means the `acpi_call` kernel module is not loaded or not available on your system.
+
+    **Solution:**
+    See the [ACPI Interface](/troubleshooting/acpi-interface) page for detailed instructions on installing and loading the `acpi_call` module.
+
+    <Warning>
+      Without `acpi_call`, KVantage cannot communicate with your laptop's firmware and will not function.
+    </Warning>
+  </Accordion>
+
+  <Accordion icon="triangle-exclamation" title="Not a Lenovo laptop">
+    KVantage is specifically designed for Lenovo laptops and will not work on other brands.
+
+    **Why this limitation exists:**
+    - KVantage uses Lenovo-specific ACPI calls to control battery thresholds, performance profiles, and rapid charge
+    - Other laptop manufacturers use different ACPI methods and memory addresses
+    - Running Lenovo ACPI commands on non-Lenovo hardware could cause undefined behavior
+
+    **Check your laptop brand:**
+    ```bash
+    sudo dmidecode -s system-manufacturer
+    ```
+
+    If the output is not "LENOVO" or "Lenovo", KVantage will not work on your system.
+
+    <Note>
+      **Alternatives for other brands:**
+      - Dell: [dell-command-configure](https://www.dell.com/support/kbdoc/en-us/000178000/dell-command-configure)
+      - HP: [Linux Vendor Firmware Service](https://fwupd.org/)
+      - Framework: [framework-system76-power](https://github.com/pop-os/system76-power)
+      - ThinkPad (some models): [TLP](https://linrunner.de/tlp/)
+    </Note>
+  </Accordion>
+
+  <Accordion icon="battery-empty" title="Features not working on my Lenovo laptop">
+    Not all Lenovo laptops expose the same ACPI features. Some budget models may not support:
+    - Custom battery threshold (80% threshold is the only option on some models)
+    - Rapid charge toggle
+    - Performance profile switching
+
+    **Verify what your laptop supports:**
+    Check Lenovo's official documentation for your specific model to see which features are available in Windows. If a feature doesn't work in Windows, it won't work in KVantage either.
+
+    **Test ACPI calls manually:**
+    Advanced users can test specific ACPI calls using the backend directly. See the [ACPI Interface](/troubleshooting/acpi-interface) documentation for details.
+  </Accordion>
+</AccordionGroup>
+
+## Application Behavior
+
+<AccordionGroup>
+  <Accordion icon="window" title="Application window doesn't appear">
+    If KVantage starts but no window appears:
+
+    **Check if it's running:**
+    ```bash
+    ps aux | grep kvantage
+    ```
+
+    **Try running from the terminal:**
+    ```bash
+    java -jar kvantage.jar
+    ```
+    Look for any error messages in the terminal output.
+
+    **Check display server compatibility:**
+    KVantage uses Compose Multiplatform for Desktop, which should work on both X11 and Wayland.
+
+    If you're on Wayland and experiencing issues, try forcing X11:
+    ```bash
+    GDK_BACKEND=x11 java -jar kvantage.jar
+    ```
+  </Accordion>
+
+  <Accordion icon="rotate" title="Settings not persisting after restart">
+    If your settings reset every time you restart KVantage:
+
+    **Check write permissions:**
+    Settings are stored in your user config directory. Verify it's writable:
+    ```bash
+    ls -la ~/.config/kvantage/
+    ```
+
+    **Look for error messages:**
+    Run KVantage from the terminal and watch for file I/O errors when changing settings.
+
+    **Reset configuration (if corrupted):**
+    ```bash
+    rm -rf ~/.config/kvantage/
+    ```
+    Then restart KVantage to regenerate default settings.
+  </Accordion>
+</AccordionGroup>
+
+## Getting More Help
+
+If your issue isn't covered here:
+
+1. Check the [ACPI Interface](/troubleshooting/acpi-interface) documentation for hardware-level troubleshooting
+2. Review the [Permissions](/troubleshooting/permissions) page for security and privilege-related issues
+3. Search existing [GitHub issues](https://github.com/kosail/KVantage/issues)
+4. Open a new issue with:
+   - Your Linux distribution and version
+   - Laptop model
+   - Full error messages or terminal output
+   - Steps to reproduce the problem

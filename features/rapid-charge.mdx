@@ -1,0 +1,209 @@
+---
+title: Rapid Charge
+description: Charge your laptop battery faster when you're in a hurry
+---
+
+## Overview
+
+Rapid Charge mode enables faster battery charging by increasing the charging current. This feature is useful when you need to quickly top up your battery before heading out, but it comes with trade-offs for battery longevity.
+
+<Warning>
+Rapid charging generates more heat and can accelerate battery degradation over time. Use this feature sparingly and only when you need a quick charge.
+</Warning>
+
+## How It Works
+
+When Rapid Charge is enabled:
+
+- Your laptop's charging circuitry increases the charging current
+- The battery charges significantly faster than normal
+- More heat is generated during the charging process
+- The charging cycle may be less gentle on battery chemistry
+
+<Info>
+Rapid Charge is most effective when your battery is below 80%. Charging naturally slows down above 80% to protect battery health regardless of this setting.
+</Info>
+
+## The Trade-Off: Speed vs. Longevity
+
+### Benefits
+
+<CardGroup cols={2}>
+  <Card title="Faster Charging" icon="bolt-lightning">
+    Get more charge in less time when you're in a hurry
+  </Card>
+  <Card title="Convenient for Travel" icon="plane">
+    Quickly charge during short breaks or layovers
+  </Card>
+  <Card title="Emergency Power" icon="triangle-exclamation">
+    Essential when you urgently need battery power
+  </Card>
+  <Card title="Quick Top-Ups" icon="clock">
+    Maximize charging during brief periods near an outlet
+  </Card>
+</CardGroup>
+
+### Drawbacks
+
+- **Increased Heat**: More heat generation during charging, which accelerates battery wear
+- **Battery Degradation**: Higher current stresses battery chemistry, reducing lifespan over time
+- **Incompatible with Conservation**: Automatically disables Battery Conservation Mode
+- **Diminishing Returns**: Less effective above 80% charge
+
+<Tip>
+For optimal battery health, use standard charging most of the time and reserve Rapid Charge for situations when you genuinely need it.
+</Tip>
+
+## When to Use Rapid Charge
+
+### Recommended Scenarios
+
+- **Before travel**: Quick charge before leaving for a flight or meeting
+- **Short breaks**: Maximize charging during a 30-minute coffee break
+- **Emergency situations**: When you urgently need battery power
+- **Occasional use**: Not planning to keep the laptop for many years
+
+### When to Avoid
+
+- **Overnight charging**: No rush, standard charging is healthier
+- **Long-term battery health**: If you want to maximize battery lifespan
+- **Already using conservation mode**: They conflict with each other
+- **Hot environments**: Rapid charging generates additional heat
+
+## How to Enable Rapid Charge
+
+1. Open KVantage from your application menu
+2. Locate the **Rapid Charge** toggle switch
+3. Click the switch to enable Rapid Charge mode
+4. The charging rate increases immediately if your laptop is plugged in
+5. The switch displays with a secondary color (different from other toggles)
+
+<Note>
+The Rapid Charge toggle has a distinctive secondary color (orange/amber) to differentiate it from other features and indicate its special nature.
+</Note>
+
+## Interaction with Battery Conservation Mode
+
+Rapid Charge and [Battery Conservation Mode](/features/battery-conservation) have an important relationship:
+
+1. **Enabling Rapid Charge** automatically **disables Battery Conservation Mode**
+2. Battery Conservation Mode stays disabled while Rapid Charge is active
+3. The two features are mutually exclusive by design
+
+**Why?** Rapid Charge aims to charge as quickly as possible, while Battery Conservation limits charging to protect battery health. These goals are fundamentally opposed, so KVantage prevents you from enabling both simultaneously.
+
+<Warning>
+If you have Battery Conservation Mode enabled and turn on Rapid Charge, your battery will charge beyond 80% up to 100%. Remember to re-enable conservation mode after disabling rapid charge if you want to return to the 80% limit.
+</Warning>
+
+## Technical Details
+
+### Daemon Protocol
+
+Rapid Charge communicates with the KVantage daemon using these commands:
+
+**Get Current Status:**
+```bash
+get rapid
+```
+
+Returns:
+- `0x1` - Rapid Charge enabled
+- `0x0` - Rapid Charge disabled (normal charging speed)
+
+**Set Rapid Charge:**
+```bash
+set rapid <value>
+```
+
+Where `<value>` is:
+- `1` - Enable Rapid Charge
+- `0` - Disable Rapid Charge
+
+### ACPI Commands
+
+The daemon writes to the laptop's ACPI interface:
+
+- **Enable**: `\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x07`
+- **Disable**: `\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x08`
+
+### Implementation Reference
+
+The Rapid Charge UI is implemented in:
+```
+composeApp/src/jvmMain/kotlin/com/korealm/kvantage/ui/mainUI/RapidCharge.kt
+```
+
+Key implementation details:
+- Uses secondary theme colors (orange/amber) for visual distinction
+- Automatically signals to disable Battery Conservation when enabled
+- Fetches current state on initialization
+- Shows disabled state with loading indicator until initialization completes
+- Persists setting across application restarts
+
+## Battery Health Best Practices
+
+To maximize your battery's lifespan while occasionally using Rapid Charge:
+
+<Steps>
+  <Step title="Use standard charging by default">
+    Keep Rapid Charge disabled for routine charging sessions
+  </Step>
+  
+  <Step title="Enable Battery Conservation for daily use">
+    If your laptop is often plugged in, use the 80% charge limit
+  </Step>
+  
+  <Step title="Reserve Rapid Charge for emergencies">
+    Only enable when you genuinely need a quick charge
+  </Step>
+  
+  <Step title="Disable after use">
+    Turn off Rapid Charge once you've reached your target charge level
+  </Step>
+  
+  <Step title="Monitor battery temperature">
+    If your laptop gets very hot while charging, consider disabling Rapid Charge
+  </Step>
+</Steps>
+
+## Compatibility
+
+Rapid Charge requires:
+- A Lenovo laptop with hardware support for rapid charging
+- The `acpi_call` kernel module loaded
+- Root/sudo privileges (handled automatically by KVantage)
+- Compatible BIOS/firmware version
+
+<Info>
+Most modern Lenovo laptops support Rapid Charge, but some older or budget models may not. The toggle will appear regardless, but may not function on unsupported hardware.
+</Info>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No noticeable difference in charging speed">
+    Your laptop model may not support rapid charging via ACPI, or the difference may be subtle on your specific model. Some laptops have limited rapid charge implementations.
+  </Accordion>
+  
+  <Accordion title="Toggle enables but then reverts">
+    Check that the `acpi_call` kernel module is loaded (`lsmod | grep acpi_call`). Ensure you granted root permission when prompted by pkexec.
+  </Accordion>
+  
+  <Accordion title="Battery gets very hot">
+    This is expected behavior with Rapid Charge. If temperatures seem excessive, disable the feature and allow standard charging. Consider improving ventilation around your laptop.
+  </Accordion>
+  
+  <Accordion title="Battery Conservation disabled automatically">
+    This is intentional behavior. Rapid Charge and Battery Conservation Mode are mutually exclusive. Re-enable conservation mode after disabling rapid charge if desired.
+  </Accordion>
+  
+  <Accordion title="Rapid Charge doesn't work above 80%">
+    Most laptops naturally slow charging above 80% to protect the battery, regardless of the Rapid Charge setting. This is normal battery management behavior.
+  </Accordion>
+</AccordionGroup>
+
+## Related Features
+
+- [Battery Conservation Mode](/features/battery-conservation) - Limit charge to 80% for battery health
+- [Performance Profiles](/features/performance-profiles) - Manage power consumption and performance

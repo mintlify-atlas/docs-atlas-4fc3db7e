@@ -1,0 +1,182 @@
+---
+title: Contributing Guidelines
+description: How to contribute to KVantage - a control center for Lenovo laptops on Linux
+---
+
+## Welcome Contributors!
+
+Contributions are welcome! Feel free to fork the repository and submit pull requests. If you have ideas, suggestions, or bug reports, open an issue on GitHub.
+
+## How to Contribute
+
+### Forking and Pull Requests
+
+1. **Fork the repository** on GitHub
+2. **Create a feature branch** from `main`:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Make your changes** and commit them with clear, descriptive messages
+4. **Push to your fork**:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+5. **Open a Pull Request** against the main repository
+
+### Issue Reporting
+
+When reporting issues, please include:
+
+- **Laptop model** and specifications
+- **Linux distribution** and version
+- **Kernel version** (`uname -r`)
+- **Steps to reproduce** the issue
+- **Expected behavior** vs actual behavior
+- **Logs or error messages** if applicable
+
+<Warning>
+  Remember that KVantage specifically targets **Lenovo laptops** with ACPI support via `/proc/acpi/call`. Do not test on non-Lenovo devices.
+</Warning>
+
+## Code Style
+
+KVantage follows **Kotlin coding conventions**:
+
+- Use **4 spaces** for indentation (configured in `gradle.properties`)
+- Follow **official Kotlin style guide** (`kotlin.code.style=official`)
+- Use **meaningful variable and function names**
+- Add **comments** for complex logic or ACPI-specific operations
+- Keep functions **focused and single-purpose**
+
+### Project Structure
+
+The main codebase is organized as:
+
+```
+composeApp/src/jvmMain/kotlin/com/korealm/kvantage/
+├── models/      # Data models and state management
+├── state/       # Application state logic
+├── ui/          # UI components and screens
+│   └── mainUI/  # Main application interface
+└── Main.kt      # Application entry point
+```
+
+## Testing Considerations
+
+<Warning>
+  **IMPORTANT**: Do NOT test KVantage as root!
+</Warning>
+
+The application requires root access to interact with `/proc/acpi/call`, but this access is **isolated to the backend daemon** (`kvand`). The GUI should never run as root.
+
+### Testing Best Practices
+
+- Test the GUI application as a **normal user**
+- The app will request the sudo password **once** during startup
+- Root access is **limited to the backend daemon** only
+- Always test on **actual Lenovo hardware** (no emulation support)
+- Verify that ACPI module is loaded: `lsmod | grep acpi_call`
+
+### Known Testing Limitations
+
+1. **Hardware-specific**: Only works on Lenovo laptops with ACPI support
+2. **Root required**: Backend needs root to read/write `/proc/acpi/call`
+3. **No safe testing environment**: Changes affect actual hardware settings
+
+## Logging Best Practices
+
+<Note>
+  The project maintainer learned this the hard way: **Always use loggers** to track application execution!
+</Note>
+
+When adding new features:
+
+- **Use proper logging** instead of print statements
+- Log **state changes** and ACPI interactions
+- Include **error context** in error logs
+- Add **debug logs** for troubleshooting complex flows
+
+This is especially critical for:
+- Root-executed operations
+- ACPI read/write operations
+- Backend daemon communication
+- Error handling paths
+
+## Translation Contributions
+
+KVantage supports multiple languages with i18n resources in:
+
+```
+composeApp/src/jvmMain/composeResources/values-{locale}/
+```
+
+### Current Languages
+
+- **English** (en) - Author
+- **Spanish** (es) - Author  
+- **Japanese** (ja) - Author
+- **German** (de) - AI translated
+- **French** (fr) - AI translated
+- **Portuguese** (pt) - AI translated
+- **Korean** (kr) - AI translated
+- **Chinese** (zh) - AI translated
+
+### Contributing Translations
+
+To improve or add translations:
+
+1. Copy the `values/` directory structure
+2. Create or update `values-{locale}/strings.xml`
+3. Translate all string resources
+4. Test by changing your system locale
+5. Submit a PR with your changes
+
+<Tip>
+  Native speakers are encouraged to review and improve AI-translated languages!
+</Tip>
+
+## Backend Development
+
+The backend daemon (`kvand`) is maintained in a **separate repository**:
+
+- **Repository**: [github.com/kosail/Kvand](https://github.com/kosail/Kvand)
+- **Language**: Go (Golang)
+- **Purpose**: Handle root-level ACPI operations
+
+The main KVantage repository includes the compiled `kvand` binary and reference source for convenience, but active backend development happens in the dedicated repository.
+
+### Why Separate?
+
+- **Clean separation** between GUI and system operations
+- **Security isolation** of root-level access
+- **Different tech stacks** (Kotlin/Compose vs Go)
+- JVM and Kotlin Native limitations for low-level operations
+
+## License
+
+KVantage is licensed under **GPLv3 (GNU General Public License v3)**.
+
+<Info>
+  Free to use, modify, and distribute as long as derivative works:
+  - Remain **open source**
+  - Are **not used for profitable purposes**
+  - Include the same GPLv3 license
+</Info>
+
+By contributing, you agree that your contributions will be licensed under the same GPLv3 license.
+
+## Questions?
+
+If you have questions about contributing:
+
+- Open a **GitHub Discussion**
+- Create an **issue** with the `question` label
+- Review existing **issues and PRs** for context
+
+---
+
+<Note>
+  KVantage is a personal learning project and is not affiliated with Lenovo.
+  
+  Made with love from Honduras by [kosail](https://github.com/kosail)
+</Note>

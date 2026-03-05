@@ -1,0 +1,323 @@
+---
+title: Localization
+description: KVantage supports 8 languages with automatic locale detection
+---
+
+## Overview
+
+KVantage is available in eight languages, making it accessible to users around the world. The application automatically detects your system's locale and displays in the appropriate language.
+
+<Info>
+KVantage uses Android/Compose Multiplatform's resource system for localization, with strings stored in XML files for each supported language.
+</Info>
+
+## Supported Languages
+
+KVantage currently supports the following languages:
+
+<CardGroup cols={2}>
+  <Card title="English" icon="flag-usa">
+    Default language (values/)
+  </Card>
+  <Card title="Español (Spanish)" icon="flag">
+    values-es/
+  </Card>
+  <Card title="日本語 (Japanese)" icon="flag">
+    values-ja/ - Translated by the author
+  </Card>
+  <Card title="Deutsch (German)" icon="flag">
+    values-de/
+  </Card>
+  <Card title="Français (French)" icon="flag">
+    values-fr/
+  </Card>
+  <Card title="Português (Portuguese)" icon="flag">
+    values-pt/
+  </Card>
+  <Card title="한국어 (Korean)" icon="flag">
+    values-kr/
+  </Card>
+  <Card title="中文 (Chinese)" icon="flag">
+    values-zh/
+  </Card>
+</CardGroup>
+
+## Translation Quality
+
+### Human Translated
+
+<CardGroup cols={2}>
+  <Card title="English" icon="star">
+    Native language of the application
+  </Card>
+  <Card title="Japanese" icon="star">
+    Personally translated by the author (kosail)
+  </Card>
+</CardGroup>
+
+### AI Translated
+
+The following languages were translated using AI assistance:
+
+- Spanish (Español)
+- German (Deutsch)
+- French (Français)
+- Portuguese (Português)
+- Korean (한국어)
+- Chinese (中文)
+
+<Warning>
+AI translations may contain errors or awkward phrasing. If you're a native speaker of any of these languages and notice translation issues, please consider contributing improvements to the project!
+</Warning>
+
+## How Language Detection Works
+
+### Automatic Locale Detection
+
+KVantage automatically selects the appropriate language based on your system configuration:
+
+1. **System Locale**: KVantage reads your operating system's locale setting
+2. **Language Match**: Attempts to find a matching translation resource folder
+3. **Fallback**: If no match is found, defaults to English
+
+For example:
+- System locale `ja_JP` → Uses `values-ja/` (Japanese)
+- System locale `es_MX` → Uses `values-es/` (Spanish)
+- System locale `pt_BR` → Uses `values-pt/` (Portuguese)
+- System locale `en_US` → Uses `values/` (English)
+
+<Tip>
+KVantage follows the standard Android/Compose resource naming convention for locales, making it easy to add new languages.
+</Tip>
+
+### Resource Folder Structure
+
+Translations are stored in the Compose resources directory:
+
+```
+composeApp/src/jvmMain/composeResources/
+├── values/              # English (default)
+│   └── strings.xml
+├── values-de/           # German
+│   └── strings.xml
+├── values-es/           # Spanish
+│   └── strings.xml
+├── values-fr/           # French
+│   └── strings.xml
+├── values-ja/           # Japanese
+│   └── strings.xml
+├── values-kr/           # Korean
+│   └── strings.xml
+├── values-pt/           # Portuguese
+│   └── strings.xml
+└── values-zh/           # Chinese
+    └── strings.xml
+```
+
+## Translated Strings
+
+KVantage translates all user-facing text, including:
+
+### Main Interface
+- Performance profile names (Performance, Intelligent cooling, Power saving)
+- Feature toggles (Battery Threshold, Rapid Charge)
+- Battery status information
+- Settings dialog
+
+### Settings Dialog
+- "Settings" title
+- "Dark mode" toggle
+- "Animated Background" toggle
+- "Show battery life" toggle
+- "Battery name" field
+- "Themes" section
+
+### First Run Dialog
+- Welcome message
+- Installation prompts
+- Success and error messages
+
+### Warning Messages
+- Battery threshold warning about premium feature limitations
+- Battery interface error messages
+- Copyright and attribution text
+
+## Example: Strings in Use
+
+Here's how strings are used in the application code:
+
+```kotlin
+Text(
+    text = stringResource(Res.string.performance_profile),
+    fontSize = 20.sp
+)
+
+SwitchWithText(
+    text = Res.string.rapid_charge,
+    isChecked = isChecked,
+    onCheckedChange = { checked -> ... }
+)
+```
+
+The `stringResource()` function automatically loads the correct translation based on your system locale.
+
+## Changing Language Manually
+
+Currently, KVantage does **not** include a manual language selector in the UI. The language is always determined by your system locale.
+
+To change the language:
+
+<Steps>
+  <Step title="Change your system locale">
+    Modify your operating system's language settings
+  </Step>
+  
+  <Step title="Restart KVantage">
+    Close and reopen KVantage to apply the new locale
+  </Step>
+  
+  <Step title="Verify language">
+    The interface should now display in your selected language
+  </Step>
+</Steps>
+
+<Note>
+On most Linux distributions, you can change your locale using your desktop environment's Settings app, or by modifying the `LANG` environment variable before launching KVantage.
+</Note>
+
+## Contributing Translations
+
+KVantage is open source and welcomes translation contributions!
+
+### Improving Existing Translations
+
+If you're a native speaker and notice translation errors:
+
+1. Navigate to the appropriate `values-XX/strings.xml` file
+2. Update the incorrect translations
+3. Submit a pull request to the KVantage GitHub repository
+
+### Adding New Languages
+
+To add support for a new language:
+
+<Steps>
+  <Step title="Create resource folder">
+    Create a new folder like `values-XX/` where `XX` is the ISO 639-1 language code
+  </Step>
+  
+  <Step title="Copy strings.xml">
+    Copy `values/strings.xml` (English) as a template
+  </Step>
+  
+  <Step title="Translate all strings">
+    Translate each `<string>` entry to your target language
+  </Step>
+  
+  <Step title="Test locally">
+    Change your system locale and test the translation
+  </Step>
+  
+  <Step title="Submit pull request">
+    Contribute your translation back to the project
+  </Step>
+</Steps>
+
+### Translation Guidelines
+
+<AccordionGroup>
+  <Accordion title="Maintain placeholders">
+    Keep format specifiers like `%s` in the same positions:
+    ```xml
+    <string name="ask_install">We noticed that this is your first time running the app.%sWould you like to install KVantage?%s</string>
+    ```
+  </Accordion>
+  
+  <Accordion title="Preserve technical terms">
+    Keep technical terms like "ACPI", "pkexec", "BAT*" unchanged:
+    ```xml
+    <string name="battery_interface_not_found">Cannot get the battery information because the interface seems not to comply with the standard structure ("/sys/class/power_supply/BAT*/*")</string>
+    ```
+  </Accordion>
+  
+  <Accordion title="Match the tone">
+    KVantage uses friendly, informative language. Maintain this tone in translations.
+  </Accordion>
+  
+  <Accordion title="Consider string length">
+    Some UI elements have limited space. Try to keep translations reasonably concise.
+  </Accordion>
+</AccordionGroup>
+
+## String Resource Examples
+
+Here are some key strings from the English version (`values/strings.xml`):
+
+```xml
+<string name="performance_profile">Performance Profile</string>
+<string name="power_profile_performance">Performance</string>
+<string name="power_profile_balanced">Intelligent cooling</string>
+<string name="power_profile_powersave">Power saving</string>
+<string name="battery_threshold">Battery Threshold</string>
+<string name="rapid_charge">Rapid Charge</string>
+<string name="settings">Settings</string>
+<string name="dark_mode">Dark mode</string>
+<string name="animated_background">Animated Background</string>
+<string name="themes">Themes</string>
+```
+
+## Locale Code Reference
+
+| Language | Locale Code | Folder Name |
+|----------|-------------|-------------|
+| English | en | values/ |
+| Spanish | es | values-es/ |
+| Japanese | ja | values-ja/ |
+| German | de | values-de/ |
+| French | fr | values-fr/ |
+| Portuguese | pt | values-pt/ |
+| Korean | ko/kr | values-kr/ |
+| Chinese | zh | values-zh/ |
+
+<Info>
+KVantage uses `values-kr/` instead of the standard `values-ko/` for Korean. This is a non-standard naming but works correctly with the Compose Multiplatform resource system.
+</Info>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="KVantage displays in English despite my locale">
+    Your locale may not match any of the supported languages. KVantage falls back to English when no matching translation is found. Check your system's `LANG` environment variable.
+  </Accordion>
+  
+  <Accordion title="Some text is untranslated">
+    If only certain strings appear in English, the translation file may be incomplete. Consider contributing the missing translations.
+  </Accordion>
+  
+  <Accordion title="How do I test a different language?">
+    You can temporarily change your locale: `LANG=ja_JP.UTF-8 kvantage` to launch KVantage in Japanese, for example.
+  </Accordion>
+  
+  <Accordion title="Can I add a language selector to the UI?">
+    Currently, KVantage doesn't have a manual language selector. This would be a great feature contribution! The implementation would involve storing a language preference and overriding the system locale.
+  </Accordion>
+</AccordionGroup>
+
+## Future Improvements
+
+Potential enhancements to KVantage's localization:
+
+- **Manual language selector**: Allow users to choose language independently of system locale
+- **More languages**: Expand support to additional languages
+- **RTL support**: Add right-to-left language support (Arabic, Hebrew)
+- **Professional translations**: Replace AI translations with professional or community-reviewed versions
+- **Translation context**: Add developer notes in string resources to help translators
+
+<Tip>
+If you'd like to work on any of these improvements, the KVantage project welcomes contributions on GitHub!
+</Tip>
+
+## Related Features
+
+- [Themes](/features/themes) - Customize KVantage's visual appearance
+- Settings dialog: Access all user preferences and customization options

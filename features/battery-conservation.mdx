@@ -1,0 +1,179 @@
+---
+title: Battery Conservation Mode
+description: Extend your battery's lifespan by limiting charge to 80%
+---
+
+## Overview
+
+Battery Conservation Mode helps prolong your laptop battery's lifespan by limiting the maximum charge to 80%. This feature is especially useful if you primarily use your laptop while plugged in.
+
+<Info>
+Keeping lithium-ion batteries at 100% charge for extended periods accelerates degradation. Limiting charge to 80% significantly extends overall battery health and lifespan.
+</Info>
+
+## How It Works
+
+When Battery Conservation Mode is enabled:
+
+- Your battery will only charge up to **80%** capacity
+- Charging stops automatically at the 80% threshold
+- The battery will maintain this level while plugged in
+- Your system continues running on AC power after reaching 80%
+
+<Warning>
+If your battery is already above 80% when you enable this feature, it won't discharge to 80%. The limit only applies to charging cycles.
+</Warning>
+
+## When to Use Battery Conservation
+
+### Recommended Usage
+
+<CardGroup cols={2}>
+  <Card title="Desktop Replacement" icon="desktop">
+    Perfect if your laptop stays plugged in at a desk most of the time
+  </Card>
+  <Card title="Extended Laptop Lifespan" icon="clock">
+    Plan to keep your laptop for several years and want to maintain battery health
+  </Card>
+  <Card title="Stationary Workstation" icon="building">
+    Use your laptop in a fixed location with constant power access
+  </Card>
+  <Card title="Battery Already Degraded" icon="battery-quarter">
+    Already experiencing battery wear and want to prevent further degradation
+  </Card>
+</CardGroup>
+
+### When to Disable
+
+- Before traveling or working away from power outlets
+- When you need maximum battery runtime for the day
+- Before long flights or commutes
+- When you need every percentage point of battery capacity
+
+## How to Enable Battery Conservation
+
+1. Open KVantage
+2. Locate the **Battery Threshold** toggle switch
+3. Click the switch to enable Battery Conservation Mode
+4. Read the warning message that appears below the switch
+5. The setting takes effect immediately
+
+<Tip>
+The switch shows a visual indicator when enabled. Your current battery percentage doesn't change immediately - the 80% limit applies to the next charging cycle.
+</Tip>
+
+## Important Warning Message
+
+When you enable Battery Conservation Mode, KVantage displays this message:
+
+<Note>
+"Please, consider that the threshold value cannot be customized in all Lenovo laptops. It's a premium feature of some models."
+</Note>
+
+This means:
+- The 80% threshold is **fixed** and cannot be changed to other values (like 60% or 90%)
+- Custom threshold selection is not yet implemented in KVantage
+- Some older or budget Lenovo models may not support this feature at all
+
+## Interaction with Rapid Charge
+
+Battery Conservation Mode and [Rapid Charge](/features/rapid-charge) are mutually exclusive:
+
+- Enabling **Rapid Charge** automatically **disables** Battery Conservation
+- You cannot have both features active simultaneously
+- This is enforced by KVantage to prevent conflicting battery management strategies
+
+<Warning>
+When you toggle Rapid Charge on, Battery Conservation Mode will automatically turn off. This ensures your battery management settings don't conflict.
+</Warning>
+
+## Technical Details
+
+### Daemon Protocol
+
+Battery Conservation Mode communicates with the daemon using these commands:
+
+**Get Current Status:**
+```bash
+get conservation
+```
+
+Returns:
+- `0x1` - Conservation mode enabled (80% limit active)
+- `0x0` - Conservation mode disabled (normal 100% charging)
+
+**Set Conservation Mode:**
+```bash
+set conservation <value>
+```
+
+Where `<value>` is:
+- `1` - Enable conservation mode (80% limit)
+- `0` - Disable conservation mode (normal charging)
+
+### ACPI Commands
+
+Under the hood, the daemon writes to the ACPI call interface:
+
+- **Enable**: `\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x03`
+- **Disable**: `\_SB.PCI0.LPC0.EC0.VPC0.SBMC 0x05`
+
+### Implementation Reference
+
+The battery conservation UI is implemented in:
+```
+composeApp/src/jvmMain/kotlin/com/korealm/kvantage/ui/mainUI/BatteryThreshold.kt:48-50
+```
+
+Key features:
+- Fetches current state on initialization with loading indicator
+- Automatically disabled when Rapid Charge is enabled
+- Shows animated warning message when activated
+- Persists setting across application restarts
+
+## Future Feature: Custom Thresholds
+
+The source code shows commented-out UI for custom threshold percentage selection. This feature is planned but not yet implemented:
+
+```kotlin
+// Commented out as I currently have no time to do an implementation of this :(
+// var percentage by remember { mutableIntStateOf(80) }
+```
+
+In the future, you may be able to set custom charge thresholds (e.g., 60%, 70%, 85%) depending on your needs and hardware support.
+
+## Compatibility
+
+Battery Conservation Mode requires:
+- A compatible Lenovo laptop with ACPI firmware support
+- The `acpi_call` kernel module loaded
+- Root/sudo privileges (handled automatically by KVantage)
+
+<Info>
+Most Lenovo ThinkPad, IdeaPad, and Legion models support this feature. If your laptop doesn't support it, the toggle will still appear but may not function correctly.
+</Info>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Toggle doesn't work or switch reverts">
+    Your laptop model may not support battery conservation via ACPI. Check your laptop's specifications and BIOS version. Ensure the `acpi_call` kernel module is loaded.
+  </Accordion>
+  
+  <Accordion title="Battery charges past 80% with conservation enabled">
+    The setting may not have applied correctly. Try toggling it off and on again. Some laptops require a full discharge-charge cycle for the threshold to take effect.
+  </Accordion>
+  
+  <Accordion title="Getting permission errors">
+    KVantage's daemon requires root access to write to ACPI. Ensure `pkexec` is working correctly and you're granting permission when prompted.
+  </Accordion>
+  
+  <Accordion title="Custom percentage doesn't appear">
+    This feature is not yet implemented. Currently, only the fixed 80% threshold is supported. Check for updates to KVantage for future support.
+  </Accordion>
+</AccordionGroup>
+
+## Related Features
+
+- [Rapid Charge](/features/rapid-charge) - Enable faster charging (disables conservation mode)
+- [Performance Profiles](/features/performance-profiles) - Balance performance and battery life
